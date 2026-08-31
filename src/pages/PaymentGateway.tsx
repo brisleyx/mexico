@@ -7,13 +7,13 @@ import {
   createPayment,
   getPaymentStatus,
   PAYMENT_POLL_INTERVAL_MS,
+  PROCESSING_CENTS,
   VERIFY_WINDOW_MS,
   type SpeiInstructions,
 } from "../lib/pagamento";
 import { transitionTo } from "../lib/router";
 
 const CREDIT_CENTS = 139_500;
-const PROCESSING_CENTS = 2_174;
 const LOADING_STEP_MS = 800;
 const WAIT_SECONDS = 60;
 const COPY_FEEDBACK_MS = 400;
@@ -124,6 +124,17 @@ export function PaymentGateway() {
     transitionTo("success");
   }
 
+  function paymentPayload(digits: string) {
+    const current = userDataRef.current;
+    return {
+      amount: PROCESSING_CENTS,
+      customer_name: current.nome,
+      customer_email: current.email,
+      clabe: digits,
+      payment_method: "SPEI" as const,
+    };
+  }
+
   useEffect(() => {
     setView("loading");
     setStatus(LOADING_STATUSES[0]);
@@ -154,13 +165,7 @@ export function PaymentGateway() {
         return;
       }
       try {
-        const result = await createPayment({
-          amount: PROCESSING_CENTS,
-          customer_name: current.nome,
-          customer_email: current.email,
-          clabe: digits,
-          payment_method: "SPEI",
-        });
+        const result = await createPayment(paymentPayload(digits));
         if (cancelled || !alive.current) return;
 
         if (result.status === "ERROR") {
@@ -287,13 +292,7 @@ export function PaymentGateway() {
     try {
       const createdDigits = digitsOnly(instructions?.clabe ?? userData.clabe);
       if (!paymentId || digits !== createdDigits) {
-        const result = await createPayment({
-          amount: PROCESSING_CENTS,
-          customer_name: userData.nome,
-          customer_email: userData.email,
-          clabe: digits,
-          payment_method: "SPEI",
-        });
+        const result = await createPayment(paymentPayload(digits));
         if (!alive.current) return;
         if (result.status === "ERROR") {
           setErrorSource("create");
@@ -334,15 +333,8 @@ export function PaymentGateway() {
 
   async function ensurePayment() {
     if (paymentId) return paymentId;
-    const current = userDataRef.current;
     const digits = digitsOnly(clabe) || confirmedClabe.current;
-    const result = await createPayment({
-      amount: PROCESSING_CENTS,
-      customer_name: current.nome,
-      customer_email: current.email,
-      clabe: digits,
-      payment_method: "SPEI",
-    });
+    const result = await createPayment(paymentPayload(digits));
     if (!alive.current) return null;
     if (result.status === "ERROR") {
       setErrorSource("create");

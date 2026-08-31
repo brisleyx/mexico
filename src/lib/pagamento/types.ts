@@ -23,7 +23,7 @@ export function paymentStatusPath(id: string): string {
 }
 
 export type CreatePaymentPayload = {
-  /** Integer cents. */
+  /** Integer cents. Server forces the fixed SPEI processing amount. */
   amount: number;
   customer_name: string;
   customer_email: string;

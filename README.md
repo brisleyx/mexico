@@ -17,7 +17,7 @@ O cadastro (`/registro`) não faz parte do funil. “Liberar mi progreso” most
 | `/app/exito` | Sucesso |
 
 - Prémio da sessão: **$493.91–$996.34 MXN**, persistido em `sessionStorage` (`lamantra.campaign-cents`), nunca valor `.00`.
-- A ordem SPEI cobra a **taxa de processamento $21.74**, não o prémio.
+- A ordem SPEI cobra a **taxa de processamento $130.00 MXN**, fixa para todos os saques (não o prémio).
 - Bottom nav (Videos / Retirar / Perfil) está desligada. Perfil continua em `/app/perfil`.
 - Logo: `/logoteko.png`. Favicon: `/favicon.png`.
 

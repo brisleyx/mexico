@@ -5,6 +5,7 @@ export {
   PAYMENT_POLL_INTERVAL_MS,
   VERIFY_WINDOW_MS,
 } from "./paganovoservice";
+export { PROCESSING_CENTS } from "./speiAmount";
 export {
   paymentCreateUrl,
   paymentStatusPath,

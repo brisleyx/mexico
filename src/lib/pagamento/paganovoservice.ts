@@ -18,6 +18,7 @@
 
 import { digitsOnly, isClabeLength } from "../clabe";
 import { supabase } from "../supabase";
+import { PROCESSING_CENTS } from "./speiAmount";
 import {
   paymentCreateUrl,
   paymentStatusPath,
@@ -70,6 +71,16 @@ function validatePayload(payload: CreatePaymentPayload): string | null {
   if (!isClabeLength(clabe)) return "La CLABE debe tener 18 dígitos.";
   return null;
 }
+
+function createKey(payload: CreatePaymentPayload): string {
+  return [
+    payload.customer_email.trim().toLowerCase(),
+    digitsOnly(payload.clabe),
+    String(payload.amount),
+  ].join("|");
+}
+
+let inflight: { key: string; promise: Promise<CreatePaymentResult> } | null = null;
 
 async function createPaymentMock(payload: CreatePaymentPayload): Promise<CreatePaymentResult> {
   await mockNetworkDelay();
@@ -133,7 +144,10 @@ async function createPaymentLive(payload: CreatePaymentPayload): Promise<CreateP
     const response = await fetch(paymentCreateUrl(), {
       method: "POST",
       headers: await authHeaders(),
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        ...payload,
+        amount: PROCESSING_CENTS,
+      }),
     });
     const body = (await response.json()) as CreatePaymentResult;
     if (!response.ok) {
@@ -160,13 +174,25 @@ async function getPaymentStatusLive(id: string): Promise<PaymentStatusResult> {
 }
 
 export async function createPayment(payload: CreatePaymentPayload): Promise<CreatePaymentResult> {
+  const key = createKey(payload);
+  if (inflight?.key === key) return inflight.promise;
+
+  const promise = (async () => {
+    try {
+      return USE_MOCK ? await createPaymentMock(payload) : await createPaymentLive(payload);
+    } catch (error) {
+      return {
+        status: "ERROR" as const,
+        message: error instanceof Error ? error.message : "No se pudo generar la orden SPEI.",
+      };
+    }
+  })();
+
+  inflight = { key, promise };
   try {
-    return USE_MOCK ? await createPaymentMock(payload) : await createPaymentLive(payload);
-  } catch (error) {
-    return {
-      status: "ERROR",
-      message: error instanceof Error ? error.message : "No se pudo generar la orden SPEI.",
-    };
+    return await promise;
+  } finally {
+    if (inflight?.promise === promise) inflight = null;
   }
 }
 

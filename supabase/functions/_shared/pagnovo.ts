@@ -50,12 +50,16 @@ export async function createSpeiPurchase(input: {
   description: string;
   externalId: string;
   postbackUrl?: string;
-  phone?: string;
+  phone: string;
+  cpf: string;
 }): Promise<PagnovoPurchase & { traceId: string | null }> {
-  const phone = (input.phone ?? "").replace(/\D/g, "");
+  const phone = input.phone.replace(/\D/g, "");
+  const cpf = input.cpf.replace(/\D/g, "");
   const body: Record<string, unknown> = {
     name: input.name,
     email: input.email,
+    cpf,
+    phone,
     amount: input.amountCents,
     currency: "MXN",
     paymentMethod: "SPEI",
@@ -65,7 +69,6 @@ export async function createSpeiPurchase(input: {
     externalId: input.externalId,
   };
   if (input.postbackUrl) body.postbackUrl = input.postbackUrl;
-  if (phone.length >= 8 && phone.length <= 12) body.phone = phone;
 
   const response = await fetch(`${PAGNOVO_API}/transactions/v2/purchase`, {
     method: "POST",

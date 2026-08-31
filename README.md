@@ -1,19 +1,27 @@
-# LaMantra
+# LaMantra (México / SPEI)
 
-App de video para México: usuarios ganan **MXN reales** por ver campañas de marcas socias y retiran **solo lo ganado**, por **SPEI** (CLABE).
+Funil em espanhol (MXN): landing → dashboard de recompensa → canje → verifica dados → ordem SPEI (Pagnovo) → sucesso.
 
-Marca propia. Cadastro, login e perfil. Sem taxa para “liberar saque”.
+O cadastro (`/registro`) não faz parte do funil. “Liberar mi progreso” mostra o overlay de sincronização e entra no dashboard com sessão guest.
 
-## O que este MVP faz
+## Funil
 
-- Landing, criar conta, entrar, sair
-- Feed de vídeos de parceiros
-- Player que exige ~80% assistido (sem pular) para creditar
-- Carteira em pesos mexicanos, teto diário de $80 MXN
-- Pedido de saque SPEI a partir de $20 MXN de saldo já ganho
-- Perfil com nome e CLABE (dígito verificador)
+| Rota | Ecrã |
+|---|---|
+| `/` | Presell (barras 50/50, 1000/1000, 100/100) |
+| `/app` | Dashboard com prémio da campanha |
+| `/app/cargando` | Loading com logo |
+| `/app/billetera` | Canjear (SPEI + logo BBVA) |
+| `/app/retiro` | Verifica tus datos (nome, e-mail, CLABE vazios) |
+| `/app/pago` | Gateway SPEI (CLABE de depósito Pagnovo) |
+| `/app/exito` | Sucesso |
 
-Modo atual: **demo local** (dados no navegador). Para produção, ligue um projeto Supabase **só do LaMantra**.
+- Prémio da sessão: **$493.91–$996.34 MXN**, persistido em `sessionStorage` (`lamantra.campaign-cents`), nunca valor `.00`.
+- A ordem SPEI cobra a **taxa de processamento $21.74**, não o prémio.
+- Bottom nav (Videos / Retirar / Perfil) está desligada. Perfil continua em `/app/perfil`.
+- Logo: `/logoteko.png`. Favicon: `/favicon.png`.
+
+`/` e `/app*` partilham o `Funnel` (não estão atrás de login). Watch/Profile continuam protegidos.
 
 ## Como rodar
 
@@ -28,65 +36,75 @@ Abre `http://localhost:5173`.
 npm run build
 ```
 
-## Conta
+No **nano da VPS** (build do site) só estas linhas:
 
-1. `/registro` — nome, e-mail, senha (mín. 8)
-2. `/entrar`
-3. `/app/perfil` — nome e CLABE
-4. `/app` — ver vídeo do sócio
-5. `/app/billetera` — solicitar SPEI
+```bash
+VITE_SUPABASE_URL=https://<PROJECT>.supabase.co
+VITE_SUPABASE_ANON_KEY=
+VITE_PAGANOVO_MOCK=false
+```
 
-No demo, a CLABE `000000000000000000` passa o checksum (só para testar a tela).
+Depois do `.env`, é preciso **rebuild** (`npm run build`). Variáveis `VITE_*` só entram no bundle na altura do build.
 
-## Supabase (produção)
+**Não** coloques `PAGNOVO_SECRET_KEY` no nano nem com prefixo `VITE_`. O browser nunca chama `api.pagnovo.com`.
 
-1. Crie um projeto novo no Supabase **só para o LaMantra** (não reutilize o banco de doações nem outro produto).
-2. `supabase link` nesse projeto e rode as migrations em `supabase/migrations/` (perfil/carteira + `spei_payments`).
-3. Copie `.env.example` para `.env` e preencha `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY`.
-4. Em Authentication, habilite e-mail.
+## Supabase
 
-### Pagnovo SPEI (MXN)
+Projeto **só deste funil** (não reutilizar o banco de outra loja).
 
-O browser **nunca** chama `api.pagnovo.com`. As Edge Functions em `supabase/functions/` fazem isso.
+1. `supabase link` e migrations em `supabase/migrations/` (perfil/carteira + `spei_payments` + `20260831_ledger_update_prize.sql`).
+2. Authentication: e-mail (o funil também corre sem JWT de utilizador).
 
-1. Dashboard Supabase → Edge Functions → Secrets:
-   - `PAGNOVO_SECRET_KEY` — secret da API (Basic `secret:KEY`). **Não** use prefixo `VITE_`.
-   - `PAGNOVO_WEBHOOK_SECRET` — secret do endpoint de webhook v2 (não é a API key).
-2. Deploy:
-   ```bash
-   npx supabase functions deploy payment-create --no-verify-jwt=false
-   npx supabase functions deploy payment-status
-   npx supabase functions deploy pagnovo-webhook --no-verify-jwt
-   ```
-   (`pagnovo-webhook` tem `verify_jwt = false` no `supabase/config.toml` — a auth é HMAC `x-signature`.)
-3. No painel Pagnovo, webhook v2 URL:
-   `https://<PROJECT>.supabase.co/functions/v1/pagnovo-webhook`
-   Evento: `cashin.paid` (e `cashin.refunded` se quiser).
-4. Quando as funções e secrets estiverem no ar, no `.env` de produção: `VITE_PAGANOVO_MOCK=false`.
+### Secrets das Edge Functions
 
-Enquanto `VITE_PAGANOVO_MOCK` não for `false`, o `/app/pago` continua no simulador local.
+Dashboard → Edge Functions → Secrets (não o `.env` do Vite):
 
-O app escolhe sozinho: com `VITE_SUPABASE_*` usa Auth/carteira Supabase; sem elas, demo local.
+| Secret | Função |
+|---|---|
+| `PAGNOVO_SECRET_KEY` | API (Basic `secret:KEY`). Pode ser a **mesma conta** de outra loja MXN. |
+| `PAGNOVO_WEBHOOK_SECRET` | HMAC **deste** webhook. **Não** reutilizar o secret/URL da outra loja. |
+| `PAGNOVO_RESPONSIBLE_DOCUMENT` | CNPJ/RFC do merchant (dígitos). |
+| `PAGNOVO_RESPONSIBLE_EXTERNAL_ID` | Id estável do responsável na Pagnovo (não o UUID do pagamento). Default = o CNPJ. |
+
+`payment-create` e `payment-status` têm `verify_jwt = false` — o funil guest cria SPEI sem signup. O webhook também está sem JWT; a auth é HMAC `x-signature`.
+
+```bash
+npx supabase functions deploy payment-create --no-verify-jwt
+npx supabase functions deploy payment-status --no-verify-jwt
+npx supabase functions deploy pagnovo-webhook --no-verify-jwt
+```
+
+### Dois webhooks (duas lojas)
+
+Se a outra loja (Next.js) já tem um webhook Pagnovo, **não apontar o mesmo URL para aqui**.
+
+Nesta loja:
+
+`https://<PROJECT>.supabase.co/functions/v1/pagnovo-webhook`
+
+No painel Pagnovo cria um **segundo** webhook com esse URL. Eventos: `cashin.paid` (e `cashin.refunded` se quiseres). A secret que eles mostram uma vez vai só para **esta** Supabase.
+
+Cada cobrança daqui envia `postbackUrl` para esta função, para o `cashin.paid` não ir para o Next.js.
+
+Confirmação de pagamento: webhook **ou** polling `GET /functions/v1/payment-status?id=`.
+
+Localhost vs domínio: irrelevante para a Pagnovo. O Vite só chama a Supabase; a Edge Function é que fala com `api.pagnovo.com`.
+
+Se a Pagnovo devolver `Erro interno ao criar transação`, o payload SPEI já está alinhado com a loja Next.js (`MXN`, `SPEI`, `responsibleDocument`, `responsibleExternalId` estável). O 500 costuma ser a **chave/conta** (BRL/PIX ou `sk_test_` vs a conta MXN que já gera SPEI). Guarda o `x-trace-id` da resposta para o suporte Pagnovo.
+
+Enquanto `VITE_PAGANOVO_MOCK` não for `false`, `/app/pago` usa o simulador no browser.
 
 ## Estrutura
 
 ```
 src/
-  components/     # shell, logo, rotas protegidas
+  components/     # shell, logo, SyncLoader, LoadingLogoSlot
   context/        # sessão
-  lib/            # API, CLABE, dinheiro, vídeos
-  pages/          # landing, auth, feed, player, carteira, perfil
-supabase/migrations/
+  lib/            # API, campanha, CLABE, Pagnovo client (SPA → Edge Functions)
+  pages/          # funil + watch/profile
+supabase/
+  functions/      # payment-create, payment-status, pagnovo-webhook
+  migrations/
 ```
-
-## GitHub
-
-```bash
-git init
-git add .
-git commit -m "Initial LaMantra MVP for Mexico SPEI rewards"
-```
-
-Depois crie o repositório vazio e faça `git remote add origin` + `git push`.
 
 Não commite `.env`.

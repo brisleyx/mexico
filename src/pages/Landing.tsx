@@ -1,76 +1,75 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
 import { Logo } from "../components/Logo";
+import { SyncLoader } from "../components/SyncLoader";
 import { useAuth } from "../context/AuthContext";
-import { DAILY_CAP_CENTS, MIN_WITHDRAWAL_CENTS } from "../lib/types";
-import { formatMxn } from "../lib/money";
 import { transitionTo } from "../lib/router";
 
 const STATS = [
-  { label: "Campañas de socios activas", target: 4, note: "Revisando catálogo de marcas…" },
-  { label: "Tope diario en MXN", target: DAILY_CAP_CENTS / 100, note: "Calculando límite del día…" },
-  { label: "Retiro mínimo SPEI", target: MIN_WITHDRAWAL_CENTS / 100, note: "Listo. Crea tu cuenta para empezar." },
+  { label: "Vídeos vistos", target: 50, note: "Analizando tus vídeos vistos…" },
+  { label: "Tiempo de uso en la plataforma", target: 1000, note: "Comprobando tu tiempo activo en la plataforma…" },
+  { label: "Vídeos que te han gustado", target: 100, note: "Verificando tus interacciones (likes)…" },
 ];
 
+function countStep(target: number) {
+  if (target > 600) return 40;
+  if (target > 200) return 20;
+  return 1;
+}
+
 export function Landing() {
-  const { user } = useAuth();
-  const navigate = useNavigate();
+  const { ensureSession } = useAuth();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const continueTimer = useRef(0);
-  const [progress, setProgress] = useState([0, 0, 0]);
-  const [note, setNote] = useState("Preparando LaMantra…");
+  const [counts, setCounts] = useState([0, 0, 0]);
+  const [note, setNote] = useState("Analizando tus vídeos vistos…");
   const [ready, setReady] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     let raf = 0;
     const timers: number[] = [];
-    const delay = (ms: number) =>
-      new Promise<void>((resolve) => {
-        timers.push(window.setTimeout(resolve, ms));
-      });
-    const easeOut = (t: number) => 1 - (1 - t) ** 3;
-    const fillBar = (index: number, duration: number) =>
-      new Promise<void>((resolve) => {
-        const start = performance.now();
-        const tick = (now: number) => {
-          if (cancelled) return;
-          const t = Math.min(1, (now - start) / duration);
-          const eased = easeOut(t);
-          setProgress((prev) => {
-            if (Math.abs(prev[index] - eased) < 0.0005) return prev;
-            const next = [...prev];
-            next[index] = eased;
-            return next;
-          });
-          if (t < 1) {
-            raf = requestAnimationFrame(tick);
-            return;
-          }
-          setProgress((prev) => {
-            if (prev[index] === 1) return prev;
-            const next = [...prev];
-            next[index] = 1;
-            return next;
-          });
-          resolve();
-        };
-        raf = requestAnimationFrame(tick);
-      });
-    const run = async () => {
-      for (let i = 0; i < STATS.length; i++) {
+
+    const animateStat = (index: number) => {
+      if (cancelled || index >= STATS.length) return;
+      const target = STATS[index].target;
+      const step = countStep(target);
+      const duration = (target / step) * 40;
+      const start = performance.now();
+      setNote(STATS[index].note);
+
+      const tick = (now: number) => {
         if (cancelled) return;
-        setNote(STATS[i].note);
-        await fillBar(i, 2200);
-        await delay(180);
-      }
-      if (!cancelled) {
-        setNote("Tu uso en LaMantra empieza en cero. Pulsa para continuar.");
+        const current = Math.min(target, Math.floor(((now - start) / duration) * target));
+        const snapped = Math.min(target, Math.floor(current / step) * step);
+        setCounts((prev) => {
+          if (prev[index] === snapped) return prev;
+          const next = [...prev];
+          next[index] = snapped;
+          return next;
+        });
+        if (snapped < target) {
+          raf = requestAnimationFrame(tick);
+          return;
+        }
+        setCounts((prev) => {
+          if (prev[index] === target) return prev;
+          const next = [...prev];
+          next[index] = target;
+          return next;
+        });
+        if (index < STATS.length - 1) {
+          timers.push(window.setTimeout(() => animateStat(index + 1), 400));
+          return;
+        }
+        setNote("¡Listo! Tu uso ha sido validado. Pulsa para liberar el progreso.");
         setReady(true);
-      }
+      };
+
+      raf = requestAnimationFrame(tick);
     };
-    run();
+
+    animateStat(0);
     return () => {
       cancelled = true;
       cancelAnimationFrame(raf);
@@ -129,13 +128,21 @@ export function Landing() {
     return () => window.clearTimeout(continueTimer.current);
   }, []);
 
-  function continueOn() {
-    setLoading(true);
+  async function continueOn() {
+    if (syncing) return;
+    setSyncing(true);
+    const started = performance.now();
+    const wait = 1500 + Math.random() * 1000;
+    try {
+      await ensureSession();
+    } catch {
+      /* the overlay is simulated identity check; still continue into the funnel */
+    }
+    const remaining = Math.max(0, wait - (performance.now() - started));
     continueTimer.current = window.setTimeout(() => {
       sessionStorage.removeItem("lamantra.welcome");
-      if (user) transitionTo("one");
-      else navigate("/registro");
-    }, 1200);
+      transitionTo("one");
+    }, remaining);
   }
 
   return (
@@ -144,26 +151,26 @@ export function Landing() {
       <div className="presell-card">
         <Logo />
         <h1>
-          Cumples el perfil para ver socios y
-          <span> cobrar en pesos.</span>
+          Has cumplido con todos los
+          <span> criterios de actividad.</span>
         </h1>
         <p className="subtitle">
-          LaMantra acredita solo lo que viste. Revisa el resumen y entra a tu cuenta para empezar en $0.00.
+          Confirmamos que tu cuenta ha cumplido con los requisitos mínimos de uso. Revisa el resumen a continuación y pulsa para liberar tu progreso.
         </p>
         <div className="stats-box">
           <div className="stats-title">
             <span className="stats-title-dot" />
-            Detalles de LaMantra
+            Detalles de tu actividad
           </div>
           {STATS.map((stat, i) => {
-            const filled = progress[i];
-            const shown = stat.target * filled;
+            const shown = counts[i];
+            const filled = shown / stat.target;
             return (
               <div className="stat" key={stat.label}>
                 <div className="stat-top">
                   <span className="stat-label">{stat.label}</span>
                   <span className={`stat-value ${filled >= 1 ? "is-done" : ""}`}>
-                    {i === 0 ? `${Math.round(shown)}/${stat.target}` : formatMxn(shown * 100)}
+                    {shown}/{stat.target}
                   </span>
                 </div>
                 <div className="bar">
@@ -174,22 +181,27 @@ export function Landing() {
           })}
         </div>
         <p className="note">{note}</p>
-        <button type="button" className={`btn claim-btn ${ready ? "" : "is-hidden"}`} onClick={continueOn} disabled={!ready}>
-          {user ? "Entrar a mis videos" : "Crear mi cuenta"}
+        <button
+          type="button"
+          id="claimBtn"
+          className={`btn claim-btn ${ready ? "" : "is-hidden"}`}
+          onClick={continueOn}
+          disabled={!ready || syncing}
+        >
+          <span className="btn-icon" aria-hidden="true">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+              <path d="M5.5 9.511c.076.954.83 1.697 2.182 1.785V12h.6v-.709c1.4-.098 2.218-.846 2.218-1.932 0-.987-.626-1.496-1.745-1.76l-.473-.112V5.57c.6.068.982.396 1.074.85h1.052c-.076-.919-.864-1.638-2.126-1.716V4h-.6v.719c-1.195.117-2.01.836-2.01 1.853 0 .9.606 1.472 1.613 1.707l.397.098v2.034c-.615-.093-1.022-.43-1.114-.9zm2.177-2.166c-.59-.137-.91-.416-.91-.836 0-.47.345-.822.915-.925v1.76h-.005zm.692 1.193c.717.166 1.048.435 1.048.91 0 .542-.412.914-1.135.982V8.518z" />
+              <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16" />
+              <path d="M8 13.5a5.5 5.5 0 1 1 0-11 5.5 5.5 0 0 1 0 11m0 .5A6 6 0 1 0 8 2a6 6 0 0 0 0 12" />
+            </svg>
+          </span>
+          Liberar mi progreso
         </button>
-        {!user ? (
-          <p className="auth-foot">
-            ¿Ya tienes cuenta? <Link to="/entrar">Entrar</Link>
-          </p>
-        ) : null}
-        <p className="small-text">México · SPEI · marca LaMantra. El saldo no llega regalado: se gana viendo.</p>
+        <p className="small-text">
+          Los datos anteriores se generan automáticamente en función de tu interacción reciente en la plataforma.
+        </p>
       </div>
-      {loading ? (
-        <div className="lm-loader">
-          <div className="lm-spin" />
-          <p className="note">Abriendo tu espacio LaMantra…</p>
-        </div>
-      ) : null}
+      <SyncLoader open={syncing} />
     </div>
   );
 }

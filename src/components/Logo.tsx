@@ -1,11 +1,30 @@
-export function Logo({ word = true }: { word?: boolean }) {
+import { useState } from "react";
+
+const LOGO_SRC = "/logoteko.png";
+
+function FallbackMark() {
+  return (
+    <svg className="logo-mark" viewBox="0 0 32 32" aria-hidden="true">
+      <rect width="32" height="32" rx="8" fill="#fe2b54" />
+      <path d="M12 8h3.2v13.2H22v2.8H12V8Z" fill="#fff" />
+    </svg>
+  );
+}
+
+export function Logo(_props: { word?: boolean } = {}) {
+  const [ready, setReady] = useState(false);
+
   return (
     <span className="logo">
-      <svg className="logo-mark" viewBox="0 0 32 32" aria-hidden="true">
-        <rect width="32" height="32" rx="8" fill="#fe2b54" />
-        <path d="M12 8h3.2v13.2H22v2.8H12V8Z" fill="#fff" />
-      </svg>
-      {word ? <span className="logo-word">LaMantra</span> : null}
+      <img
+        className="logo-mark"
+        src={LOGO_SRC}
+        alt="LaMantra"
+        hidden={!ready}
+        onLoad={() => setReady(true)}
+        onError={() => setReady(false)}
+      />
+      {ready ? null : <FallbackMark />}
     </span>
   );
 }

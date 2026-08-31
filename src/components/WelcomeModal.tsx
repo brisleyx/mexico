@@ -1,9 +1,7 @@
 import { useEffect, useState } from "react";
 import { BankCount } from "./BankCount";
-import { CAMPAIGN_REWARD_CENTS } from "../lib/campaign";
+import { getCampaignRewardCents } from "../lib/campaign";
 import { secondsUntilMidnightMX } from "../lib/money";
-
-export { CAMPAIGN_REWARD_CENTS };
 
 /** Título en negrita encima de Enhorabuena. Cámbialo aquí. */
 export const REWARD_TITLE = "Premios";
@@ -24,7 +22,7 @@ function splitHms(total: number) {
 export function WelcomeModal({
   open,
   onClose,
-  cents = CAMPAIGN_REWARD_CENTS,
+  cents = getCampaignRewardCents(),
   title = REWARD_TITLE,
 }: {
   open: boolean;

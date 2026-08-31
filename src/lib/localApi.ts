@@ -1,7 +1,7 @@
 import { PARTNER_VIDEOS } from "./videos";
 import { isValidClabe } from "./clabe";
 import { todayKey } from "./money";
-import { CAMPAIGN_LEDGER_ID, CAMPAIGN_LEDGER_LABEL, CAMPAIGN_REWARD_CENTS, isCampaignCredit } from "./campaign";
+import { CAMPAIGN_LEDGER_ID, CAMPAIGN_LEDGER_LABEL, getCampaignRewardCents, isCampaignCredit } from "./campaign";
 import {
   DAILY_CAP_CENTS,
   MIN_WITHDRAWAL_CENTS,
@@ -74,12 +74,18 @@ function todayEarned(db: Db, userId: string) {
 }
 
 function ensureCampaignCredit(db: Db, userId: string) {
+  const cents = getCampaignRewardCents();
   const ledger = db.ledger[userId] ?? [];
-  if (ledger.some((row) => isCampaignCredit(row))) return false;
+  const existing = ledger.find((row) => isCampaignCredit(row));
+  if (existing) {
+    if (existing.cents === cents) return false;
+    existing.cents = cents;
+    return true;
+  }
   const entry: LedgerEntry = {
     id: CAMPAIGN_LEDGER_ID,
     kind: "credit",
-    cents: CAMPAIGN_REWARD_CENTS,
+    cents,
     label: CAMPAIGN_LEDGER_LABEL,
     createdAt: new Date().toISOString(),
   };
@@ -92,6 +98,27 @@ export const localApi = {
     const db = load();
     const user = db.users.find((u) => u.id === db.sessionId);
     if (!user) return null;
+    return toProfile(user);
+  },
+
+  async ensureSession(): Promise<Profile> {
+    const existing = await this.getSession();
+    if (existing) return existing;
+    const db = load();
+    const user: LocalUser = {
+      id: crypto.randomUUID(),
+      email: `cuenta.${crypto.randomUUID().slice(0, 8)}@lamantra.local`,
+      displayName: "Cuenta",
+      beneficiaryName: "Cuenta",
+      clabe: "",
+      passwordHash: "",
+    };
+    db.users.push(user);
+    db.sessionId = user.id;
+    db.credited[user.id] = [];
+    db.ledger[user.id] = [];
+    db.withdrawals[user.id] = [];
+    save(db);
     return toProfile(user);
   },
 

@@ -16,20 +16,20 @@ export function App() {
         <BrowserRouter>
           <RouterBridge />
           <Routes>
-            <Route path="/" element={<Funnel />} />
+            <Route element={<Funnel />}>
+              <Route path="/" element={null} />
+              <Route path="/app" element={null} />
+              <Route path="/app/cargando" element={null} />
+              <Route path="/app/billetera" element={null} />
+              <Route path="/app/retiro" element={null} />
+              <Route path="/app/pago" element={null} />
+              <Route path="/app/exito" element={null} />
+            </Route>
             <Route element={<GuestOnly />}>
               <Route path="/entrar" element={<Login />} />
               <Route path="/registro" element={<Register />} />
             </Route>
             <Route element={<ProtectedRoute />}>
-              <Route element={<Funnel />}>
-                <Route path="/app" element={null} />
-                <Route path="/app/cargando" element={null} />
-                <Route path="/app/billetera" element={null} />
-                <Route path="/app/retiro" element={null} />
-                <Route path="/app/pago" element={null} />
-                <Route path="/app/exito" element={null} />
-              </Route>
               <Route element={<AppShell />}>
                 <Route path="/app/ver/:id" element={<Watch />} />
                 <Route path="/app/perfil" element={<Profile />} />

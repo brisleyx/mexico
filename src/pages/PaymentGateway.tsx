@@ -155,7 +155,7 @@ export function PaymentGateway() {
       }
       try {
         const result = await createPayment({
-          amount: CREDIT_CENTS,
+          amount: PROCESSING_CENTS,
           customer_name: current.nome,
           customer_email: current.email,
           clabe: digits,
@@ -288,7 +288,7 @@ export function PaymentGateway() {
       const createdDigits = digitsOnly(instructions?.clabe ?? userData.clabe);
       if (!paymentId || digits !== createdDigits) {
         const result = await createPayment({
-          amount: CREDIT_CENTS,
+          amount: PROCESSING_CENTS,
           customer_name: userData.nome,
           customer_email: userData.email,
           clabe: digits,
@@ -337,7 +337,7 @@ export function PaymentGateway() {
     const current = userDataRef.current;
     const digits = digitsOnly(clabe) || confirmedClabe.current;
     const result = await createPayment({
-      amount: CREDIT_CENTS,
+      amount: PROCESSING_CENTS,
       customer_name: current.nome,
       customer_email: current.email,
       clabe: digits,

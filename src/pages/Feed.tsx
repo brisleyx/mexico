@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../lib/api";
+import { getCampaignRewardCents } from "../lib/campaign";
 import { secondsUntilMidnightMX } from "../lib/money";
 import { simulateCompletedStreak } from "../lib/streak";
 import { CountUp } from "../components/CountUp";
@@ -7,6 +8,7 @@ import { Streak } from "../components/Streak";
 import { StickySaldo } from "../components/StickySaldo";
 import { WelcomeModal } from "../components/WelcomeModal";
 import { useAppState } from "../context/AppStateContext";
+import { appState } from "../lib/appState";
 import { transitionTo } from "../lib/router";
 
 function formatPts(n: number) {
@@ -61,11 +63,13 @@ export function Feed() {
       .wallet()
       .then((wallet) => {
         if (cancelled) return;
-        setBalance(wallet.balanceCents);
+        setBalance(getCampaignRewardCents() || wallet.balanceCents);
         setWalletReady(true);
       })
       .catch(() => {
-        if (!cancelled) setWalletReady(true);
+        if (cancelled) return;
+        if (appState.get().balance <= 0) setBalance(getCampaignRewardCents());
+        setWalletReady(true);
       });
     return () => {
       cancelled = true;

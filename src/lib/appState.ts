@@ -53,11 +53,26 @@ function accountDigits(data: { clabe?: string; chave?: string }): string {
   return clabe || chave;
 }
 
+function isGuestName(nome: string): boolean {
+  return nome.trim() === "Cuenta";
+}
+
+function isGuestEmail(email: string): boolean {
+  const value = email.trim().toLowerCase();
+  return (
+    value.endsWith("@mail.lamantra.app") ||
+    value.endsWith("@lamantra.local") ||
+    /^cuenta\./.test(value)
+  );
+}
+
 function sanitizeUserData(data: UserData): UserData {
   const clabe = accountDigits(data);
+  const nome = data.nome.trim().replace(/\s+/g, " ");
+  const email = data.email.trim();
   return {
-    nome: data.nome.trim().replace(/\s+/g, " "),
-    email: data.email.trim(),
+    nome: isGuestName(nome) ? "" : nome,
+    email: isGuestEmail(email) ? "" : email,
     clabe,
     chave: clabe,
     metodo: data.metodo.trim() || "SPEI",

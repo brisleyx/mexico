@@ -1,8 +1,7 @@
-import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import type { ReactNode } from "react";
 import { Logo } from "./Logo";
 import { useAppState } from "../context/AppStateContext";
-import { transitionTo } from "../lib/router";
 
 const titles: Record<string, string> = {
   "/app": "LaMantra",
@@ -25,7 +24,6 @@ export function AppShell({ children }: { children?: ReactNode }) {
     location.pathname === "/app/retiro" ||
     location.pathname === "/app/pago" ||
     location.pathname === "/app/exito";
-  const hideNav = hideTitle;
   const funnelPad = withdrawFlow;
   const title =
     titles[location.pathname] ??
@@ -35,38 +33,6 @@ export function AppShell({ children }: { children?: ReactNode }) {
     <div className={`app-shell${plain ? " is-plain" : ""}`}>
       {hideTitle ? null : <h1 className="title">{location.pathname === "/app" ? <Logo /> : title}</h1>}
       <main className={`wrap${funnelPad ? " wrap-funnel" : ""}`}>{children ?? <Outlet />}</main>
-      {hideNav || plain ? null : (
-        <nav className="bottom-nav">
-          <NavLink
-            to="/app"
-            end
-            className={({ isActive }) => (isActive ? "active" : "")}
-            onClick={(event) => {
-              event.preventDefault();
-              transitionTo("one");
-            }}
-          >
-            Videos
-          </NavLink>
-          <NavLink
-            to="/app/billetera"
-            className={({ isActive }) =>
-              isActive || ["checkout", "five", "payment-gateway", "success"].includes(currentStep)
-                ? "active"
-                : ""
-            }
-            onClick={(event) => {
-              event.preventDefault();
-              transitionTo("checkout");
-            }}
-          >
-            Retirar
-          </NavLink>
-          <NavLink to="/app/perfil" className={({ isActive }) => (isActive ? "active" : "")}>
-            Perfil
-          </NavLink>
-        </nav>
-      )}
     </div>
   );
 }

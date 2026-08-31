@@ -1,26 +1,26 @@
 import { useEffect, useState } from "react";
+import { CountUp } from "../components/CountUp";
 import { SetupVideoModal } from "../components/SetupVideoModal";
 import { useAppState } from "../context/AppStateContext";
-import { formatHms } from "../lib/money";
+import { getCampaignRewardCents } from "../lib/campaign";
+import { formatHms, formatMxn } from "../lib/money";
 import { transitionTo } from "../lib/router";
+import { MIN_WITHDRAWAL_CENTS } from "../lib/types";
 
 const TIMER_START_SECONDS = 16 * 60 + 38;
-const AMOUNTS = [
-  { label: "1,5 €", euros: 1.5 },
-  { label: "5 €", euros: 5 },
-  { label: "10 €", euros: 10 },
-] as const;
+const CHIP_CENTS = [MIN_WITHDRAWAL_CENTS, 4_000, 8_000] as const;
+const POINTS_PER_MXN = 20_320;
 
-function formatEur(amount: number) {
-  const [int, dec] = amount.toFixed(2).split(".");
-  return `${int},${dec} €`;
+function formatPoints(cents: number) {
+  const pts = Math.round((cents / 100) * POINTS_PER_MXN);
+  return `= ${pts.toLocaleString("es-MX")} puntos`;
 }
 
 export function Checkout() {
-  const { setLastWithdrawal } = useAppState();
-  const displayEuros = 1395;
+  const { balance, setLastWithdrawal } = useAppState();
+  const displayCents = balance > 0 ? balance : getCampaignRewardCents();
+  const lastRewardCents = displayCents;
   const [secondsLeft, setSecondsLeft] = useState(TIMER_START_SECONDS);
-  const [shownEuros, setShownEuros] = useState(0);
   const [selected, setSelected] = useState<number | null>(null);
   const [tutorialOpen, setTutorialOpen] = useState(false);
   const unlocked = selected !== null;
@@ -33,24 +33,9 @@ export function Checkout() {
     return () => window.clearInterval(id);
   }, []);
 
-  useEffect(() => {
-    const from = 0;
-    const start = performance.now();
-    const duration = 900;
-    let frame = 0;
-    const tick = (now: number) => {
-      const t = Math.min(1, (now - start) / duration);
-      const eased = 1 - (1 - t) * (1 - t);
-      setShownEuros(from + (displayEuros - from) * eased);
-      if (t < 1) frame = requestAnimationFrame(tick);
-    };
-    frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
-  }, [displayEuros]);
-
   function withdraw() {
     if (!unlocked || selected === null) return;
-    setLastWithdrawal(Math.round(selected * 100));
+    setLastWithdrawal(selected);
     setTutorialOpen(true);
   }
 
@@ -83,10 +68,10 @@ export function Checkout() {
               </div>
 
               <div className="saldo-valor saldo-valor-dois" aria-live="polite">
-                <span className="valor-currency valor-currency-dois" data-amount-target="1395.00">
-                  {formatEur(shownEuros)}
+                <span className="valor-currency valor-currency-dois" data-amount-target={(displayCents / 100).toFixed(2)}>
+                  <CountUp cents={displayCents} />
                 </span>
-                <span className="total-pontos">= 28.347.200 pontos (s)</span>
+                <span className="total-pontos">{formatPoints(displayCents)}</span>
               </div>
             </div>
 
@@ -102,7 +87,7 @@ export function Checkout() {
           <div className="container-saldo" role="region" aria-labelledby="saldo-title">
             <div className="saldo-info saldo-info-dois">
               <div className="saldo-valor saldo-valor-dois" aria-live="polite">
-                <span className="total-pontos total-pontos-dois">Última recompensa: 646,43 €</span>
+                <span className="total-pontos total-pontos-dois">Última recompensa: {formatMxn(lastRewardCents)}</span>
               </div>
             </div>
           </div>
@@ -120,31 +105,31 @@ export function Checkout() {
               <span className="transferencia-txt">
                 <img src="/images/bank-transfer.svg" alt="" style={{ width: 20, verticalAlign: "middle", marginRight: 4 }} />
                 Transferencia vía /
-                <img src="/images/bbva-logo.png" alt="BBVA" className="bbva-logo-transf" />
+                <img src="/images/bbva-logo.jpg" alt="BBVA" className="bbva-logo-transf" />
               </span>
             </div>
           </div>
         </div>
         <div className="widget-container">
           <div className="botoes-row botoes-row-sacar">
-            {AMOUNTS.map((amount) => (
+            {CHIP_CENTS.map((cents) => (
               <button
-                key={amount.label}
+                key={cents}
                 type="button"
-                className={`btn-valor${selected === amount.euros ? " btn-active" : ""}`}
-                onClick={() => setSelected(amount.euros)}
+                className={`btn-valor${selected === cents ? " btn-active" : ""}`}
+                onClick={() => setSelected(cents)}
               >
-                {amount.label}
+                {formatMxn(cents)}
               </button>
             ))}
           </div>
 
           <button
             type="button"
-            className={`btn-valor display-total${selected === displayEuros ? " btn-active" : ""}`}
-            onClick={() => setSelected(displayEuros)}
+            className={`btn-valor display-total${selected === displayCents ? " btn-active" : ""}`}
+            onClick={() => setSelected(displayCents)}
           >
-            1395,00 €
+            {formatMxn(displayCents)}
           </button>
         </div>
         <button
@@ -157,7 +142,7 @@ export function Checkout() {
         </button>
         <div className="obtem obtem-sacar sacar-dinheiro">
           <span className="obtem-txt">
-            Para retirar dinero, necesitas un saldo mínimo de 1,5 €. Los límites de retirada para transacciones individuales y mensuales pueden variar según el país o región.
+            Para retirar dinero, necesitas un saldo mínimo de {formatMxn(MIN_WITHDRAWAL_CENTS)}. Los límites de retirada para transacciones individuales y mensuales pueden variar según el país o región.
           </span>
         </div>
       </div>
@@ -191,9 +176,9 @@ export function Checkout() {
             </div>
 
             <div className="saldo-valor saldo-valor-tres celular-recarga" aria-live="polite">
-              <span className="ddd">+34</span>
+              <span className="ddd">+52</span>
               <span className="linha-ddd" />
-              <div className="telefone">612 345 678</div>
+              <div className="telefone">55 1234 5678</div>
             </div>
           </div>
         </div>
@@ -202,7 +187,7 @@ export function Checkout() {
           <span className="btn-text btn-indis">No disponible</span>
         </button>
         <div className="obtem obtem-sacar">
-          <span className="obtem-txt recarga-txt">Necesitas un saldo mínimo de 10 € para recarga de celular</span>
+          <span className="obtem-txt recarga-txt">Necesitas un saldo mínimo de {formatMxn(MIN_WITHDRAWAL_CENTS)} para recarga de celular</span>
         </div>
       </div>
 

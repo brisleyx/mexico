@@ -1,6 +1,6 @@
 import { isValidClabe } from "./clabe";
 import { todayKey } from "./money";
-import { CAMPAIGN_LEDGER_LABEL, CAMPAIGN_REWARD_CENTS, isCampaignCredit } from "./campaign";
+import { CAMPAIGN_LEDGER_LABEL, getCampaignRewardCents, isCampaignCredit } from "./campaign";
 import { supabase } from "./supabase";
 import {
   DAILY_CAP_CENTS,
@@ -56,6 +56,55 @@ export const supabaseApi = {
       };
     }
     return mapProfile(data.user, row);
+  },
+
+  async ensureSession(): Promise<Profile> {
+    try {
+      const existing = await this.getSession();
+      if (existing) return existing;
+    } catch {
+      /* continue into guest sync */
+    }
+
+    const { data: anon, error: anonError } = await client().auth.signInAnonymously({
+      options: { data: { display_name: "Cuenta" } },
+    });
+    if (!anonError && anon.user) {
+      try {
+        const session = await this.getSession();
+        if (session) return session;
+      } catch {
+        /* try stored guest next */
+      }
+    }
+
+    const guestKey = "lamantra.sync-account";
+    try {
+      const saved = localStorage.getItem(guestKey);
+      if (saved) {
+        const { email, password } = JSON.parse(saved) as { email: string; password: string };
+        return await this.signIn(email, password);
+      }
+    } catch {
+      localStorage.removeItem(guestKey);
+    }
+
+    const email = `cuenta.${crypto.randomUUID()}@mail.lamantra.app`;
+    const password = `${crypto.randomUUID()}Aa1!`;
+    const { data, error } = await client().auth.signUp({
+      email,
+      password,
+      options: { data: { display_name: "Cuenta" } },
+    });
+    if (error) throw new Error(error.message);
+    if (!data.session && data.user) {
+      const { error: signInError } = await client().auth.signInWithPassword({ email, password });
+      if (signInError) throw new Error(signInError.message);
+    }
+    localStorage.setItem(guestKey, JSON.stringify({ email, password }));
+    const session = await this.getSession();
+    if (!session) throw new Error("No se pudo sincronizar la cuenta.");
+    return session;
   },
 
   async signUp(email: string, password: string, displayName: string): Promise<Profile> {
@@ -185,21 +234,30 @@ export const supabaseApi = {
       label: row.label,
       createdAt: row.created_at,
     }));
-    if (grantCampaign && !ledger.some((row) => isCampaignCredit(row))) {
+    const prizeCents = getCampaignRewardCents();
+    const campaignRow = ledger.find((row) => isCampaignCredit(row));
+    if (grantCampaign && !campaignRow) {
       const { error: campaignError } = await client().from("ledger").insert({
         user_id: user.id,
         kind: "credit",
-        cents: CAMPAIGN_REWARD_CENTS,
+        cents: prizeCents,
         label: CAMPAIGN_LEDGER_LABEL,
       });
       if (campaignError && campaignError.code !== "23505") throw new Error(campaignError.message);
       ledger.unshift({
         id: CAMPAIGN_LEDGER_LABEL,
         kind: "credit",
-        cents: CAMPAIGN_REWARD_CENTS,
+        cents: prizeCents,
         label: CAMPAIGN_LEDGER_LABEL,
         createdAt: new Date().toISOString(),
       });
+    } else if (grantCampaign && campaignRow && campaignRow.cents !== prizeCents) {
+      const { error: updateError } = await client()
+        .from("ledger")
+        .update({ cents: prizeCents })
+        .eq("id", campaignRow.id);
+      if (updateError) throw new Error(updateError.message);
+      campaignRow.cents = prizeCents;
     }
     const { data: wdRows, error: wdError } = await client()
       .from("withdrawals")

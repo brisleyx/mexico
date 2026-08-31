@@ -108,13 +108,24 @@ async function getPaymentStatusMock(id: string): Promise<PaymentStatusResult> {
 
 async function authHeaders(): Promise<HeadersInit> {
   const anon = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim() ?? "";
-  const { data } = supabase ? await supabase.auth.getSession() : { data: { session: null } };
-  const token = data.session?.access_token || anon;
-  return {
+  let userJwt = "";
+  try {
+    if (supabase) {
+      const { data } = await supabase.auth.getSession();
+      userJwt = data.session?.access_token ?? "";
+    }
+  } catch {
+    // Funnel guests often have no session; payment-create allows null user_id.
+  }
+  const headers: Record<string, string> = {
     "Content-Type": "application/json",
     apikey: anon,
-    Authorization: `Bearer ${token}`,
   };
+  // Gateway still expects apikey. Bearer is optional user JWT, else anon —
+  // never require a logged-in session (verify_jwt is off on these functions).
+  const bearer = userJwt || anon;
+  if (bearer) headers.Authorization = `Bearer ${bearer}`;
+  return headers;
 }
 
 async function createPaymentLive(payload: CreatePaymentPayload): Promise<CreatePaymentResult> {
@@ -124,10 +135,14 @@ async function createPaymentLive(payload: CreatePaymentPayload): Promise<CreateP
       headers: await authHeaders(),
       body: JSON.stringify(payload),
     });
+    const body = (await response.json()) as CreatePaymentResult;
     if (!response.ok) {
-      return { status: "ERROR", message: "No se pudo generar la orden SPEI." };
+      const message = body && "message" in body && typeof body.message === "string" && body.message.trim()
+        ? body.message
+        : "No se pudo generar la orden SPEI.";
+      return { status: "ERROR", message };
     }
-    return (await response.json()) as CreatePaymentResult;
+    return body;
   } catch {
     return { status: "ERROR", message: "No hay conexión con el servicio de pago." };
   }

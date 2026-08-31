@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { Logo } from "../components/Logo";
+import { LoadingLogoSlot } from "../components/LoadingLogoSlot";
 import { useAppState } from "../context/AppStateContext";
 import { transitionTo } from "../lib/router";
 
-const DURATION_MS = 3000;
+const DURATION_MS = 60000;
 
 const STAGES = [
   { until: 0.34, label: "Validando datos…" },
@@ -85,15 +85,17 @@ export function LoadingScreen() {
 
   return (
     <div className="screen-loader" role="status" aria-live="polite" aria-busy={currentStep === "loading"}>
-      <Logo />
-      <div className="lm-spin" aria-hidden="true" />
-      <p className="loader-status">{status}</p>
-      <div className="loader-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-label="Progreso de la solicitud">
-        <div ref={fillRef} className="progress-bar-fill" />
+      <LoadingLogoSlot />
+      <div className="loader-body">
+        <div className="lm-spin" aria-hidden="true" />
+        <p className="loader-status">{status}</p>
+        <div className="loader-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-label="Progreso de la solicitud">
+          <div ref={fillRef} className="progress-bar-fill" />
+        </div>
+        <span ref={percentRef} className="loader-percent">
+          0%
+        </span>
       </div>
-      <span ref={percentRef} className="loader-percent">
-        0%
-      </span>
     </div>
   );
 }

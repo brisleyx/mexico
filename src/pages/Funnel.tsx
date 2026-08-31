@@ -17,7 +17,7 @@ import { SuccessScreen } from "./Success";
 
 export function Funnel() {
   const { user } = useAuth();
-  const { currentStep, patchUserData, setBalance } = useAppState();
+  const { currentStep, setBalance } = useAppState();
   const location = useLocation();
   const loggedIn = Boolean(user);
   const inApp = location.pathname.startsWith("/app");
@@ -34,12 +34,6 @@ export function Funnel() {
   useEffect(() => {
     if (!user) return;
     let cancelled = false;
-    patchUserData({
-      nome: appState.get().userData.nome || user.beneficiaryName || user.displayName,
-      email: appState.get().userData.email || user.email,
-      clabe: appState.get().userData.clabe || appState.get().userData.chave || user.clabe,
-      metodo: appState.get().userData.metodo || "SPEI",
-    });
     const syncBalance = () => {
       api
         .wallet()
@@ -54,7 +48,7 @@ export function Funnel() {
       cancelled = true;
       window.removeEventListener("lamantra:wallet", syncBalance);
     };
-  }, [user, patchUserData, setBalance]);
+  }, [user, setBalance]);
 
   useEffect(() => {
     if (!withdrawContinuation) return;
@@ -70,32 +64,28 @@ export function Funnel() {
       <Screen id="presell">
         <Landing />
       </Screen>
-      {loggedIn ? (
-        <>
-          <Screen id="one">
-            <Feed />
-          </Screen>
-          <Screen id="loading">
-            <LoadingScreen />
-          </Screen>
-          <Screen id="checkout" keepMounted={withdrawContinuation}>
-            <Checkout />
-          </Screen>
-          <Screen id="five">
-            <Setup />
-          </Screen>
-          <Screen id="payment-gateway">
-            <PaymentGateway />
-          </Screen>
-          <Screen id="success">
-            <SuccessScreen />
-          </Screen>
-        </>
-      ) : null}
+      <Screen id="one">
+        <Feed />
+      </Screen>
+      <Screen id="loading">
+        <LoadingScreen />
+      </Screen>
+      <Screen id="checkout" keepMounted={withdrawContinuation}>
+        <Checkout />
+      </Screen>
+      <Screen id="five">
+        <Setup />
+      </Screen>
+      <Screen id="payment-gateway">
+        <PaymentGateway />
+      </Screen>
+      <Screen id="success">
+        <SuccessScreen />
+      </Screen>
     </div>
   );
 
-  if (loggedIn && inApp) {
+  if (inApp) {
     return <AppShell>{screens}</AppShell>;
   }
 

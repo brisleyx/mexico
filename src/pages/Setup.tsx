@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type InputHTMLAttributes, type ReactNode } from "react";
+import { LoadingLogoSlot } from "../components/LoadingLogoSlot";
 import { Logo } from "../components/Logo";
 import { useAppState } from "../context/AppStateContext";
 import { api } from "../lib/api";
@@ -53,12 +54,12 @@ function nomeError(raw: string): string | null {
 }
 
 export function Setup() {
-  const { userData, patchUserData } = useAppState();
+  const { patchUserData } = useAppState();
   const [inner, setInner] = useState<InnerStep>(1);
   const [busy, setBusy] = useState(false);
-  const [nome, setNome] = useState(userData.nome);
-  const [email, setEmail] = useState(userData.email);
-  const [clabe, setClabe] = useState(() => formatClabe(userData.clabe || userData.chave));
+  const [nome, setNome] = useState("");
+  const [email, setEmail] = useState("");
+  const [clabe, setClabe] = useState("");
   const [errors, setErrors] = useState<Partial<Record<FieldName, string>>>({});
   const [shaking, setShaking] = useState<Partial<Record<FieldName, boolean>>>({});
   const [loadText, setLoadText] = useState<string>(LOADING_TEXTS[0]);
@@ -230,8 +231,8 @@ export function Setup() {
               <TextInput
                 id="nome"
                 type="text"
-                placeholder="Nombre completo"
-                autoComplete="name"
+                placeholder="Maria Guadalupe"
+                autoComplete="off"
                 value={nome}
                 onChange={(e) => {
                   setNome(e.target.value);
@@ -243,8 +244,8 @@ export function Setup() {
               <TextInput
                 id="email"
                 type="email"
-                placeholder="tu@correo.com"
-                autoComplete="email"
+                placeholder="maria.guadalupe@exemple.com"
+                autoComplete="off"
                 inputMode="email"
                 value={email}
                 onChange={(e) => {
@@ -262,7 +263,7 @@ export function Setup() {
               <TextInput
                 id="clabe-input"
                 type="tel"
-                placeholder="000 000 0000 0000 0000"
+                placeholder="014 027 0000 0555 5558"
                 inputMode="numeric"
                 autoComplete="off"
                 maxLength={22}
@@ -327,16 +328,19 @@ export function Setup() {
       ) : null}
 
       {inner === 3 ? (
-        <main className="loading-main-content">
-          <div className="new-loading-container">
-            <div className="new-loading-text" id="new-loading-text" style={{ opacity: loadOpacity }} role="status" aria-live="polite">
-              {loadText}
+        <>
+          <LoadingLogoSlot />
+          <main className="loading-main-content">
+            <div className="new-loading-container">
+              <div className="new-loading-text" id="new-loading-text" style={{ opacity: loadOpacity }} role="status" aria-live="polite">
+                {loadText}
+              </div>
+              <div className="new-progress-track">
+                <div className="new-progress-bar" id="new-progress-bar" ref={loadBarRef} />
+              </div>
             </div>
-            <div className="new-progress-track">
-              <div className="new-progress-bar" id="new-progress-bar" ref={loadBarRef} />
-            </div>
-          </div>
-        </main>
+          </main>
+        </>
       ) : null}
 
       {inner === 4 ? (

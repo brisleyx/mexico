@@ -66,7 +66,7 @@ Deno.serve(async (req) => {
       name,
       email,
       amountCents: amount,
-      description: "LaMantra — Transferencia SPEI (crédito)",
+      description: "Transferencia SPEI",
       externalId: row.id,
       postbackUrl: functionsBase,
     });

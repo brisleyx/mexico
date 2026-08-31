@@ -3,7 +3,7 @@ import { LoadingLogoSlot } from "../components/LoadingLogoSlot";
 import { useAppState } from "../context/AppStateContext";
 import { transitionTo } from "../lib/router";
 
-const DURATION_MS = 60000;
+const DURATION_MS = 9000;
 
 const STAGES = [
   { until: 0.34, label: "Validando datos…" },

@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
-const WATCH_DELAY_MS = 10_000;
 const TUTORIAL_SRC = "/tutorial-retirar.mp4";
 
 export function SetupVideoModal({
@@ -12,6 +11,7 @@ export function SetupVideoModal({
   onContinue: () => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const maxWatched = useRef(0);
   const [showContinue, setShowContinue] = useState(false);
   const [busy, setBusy] = useState(false);
   const [playing, setPlaying] = useState(false);
@@ -27,17 +27,17 @@ export function SetupVideoModal({
       setFailed(false);
       setProgress(0);
       setSheetIn(false);
+      maxWatched.current = 0;
       return;
     }
     setShowContinue(false);
     setSheetIn(false);
+    maxWatched.current = 0;
     const enter = window.setTimeout(() => setSheetIn(true), 40);
-    const id = window.setTimeout(() => setShowContinue(true), WATCH_DELAY_MS);
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       window.clearTimeout(enter);
-      window.clearTimeout(id);
       document.body.style.overflow = previousOverflow;
     };
   }, [open]);
@@ -82,15 +82,22 @@ export function SetupVideoModal({
             onEnded={() => {
               setPlaying(false);
               setProgress(1);
+              setShowContinue(true);
             }}
             onTimeUpdate={(event) => {
               const node = event.currentTarget;
               if (!node.duration) return;
-              setProgress(node.currentTime / node.duration);
+              if (node.currentTime > maxWatched.current + 1.25) {
+                node.currentTime = maxWatched.current;
+                return;
+              }
+              if (node.currentTime > maxWatched.current) maxWatched.current = node.currentTime;
+              setProgress(maxWatched.current / node.duration);
             }}
             onError={() => {
               setFailed(true);
               setPlaying(false);
+              setShowContinue(true);
             }}
           />
           <button

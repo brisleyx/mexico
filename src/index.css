@@ -3245,11 +3245,12 @@ img.logo-mark {
   min-height: 44px;
   width: 100%;
   border-radius: var(--radius-pill);
-  background: #fe2b54;
+  background: #c8c8c8;
   color: #fff;
-  opacity: 0.55;
-  pointer-events: auto;
+  opacity: 1;
+  pointer-events: none;
   box-shadow: none;
+  cursor: not-allowed;
 }
 
 .setup-video-actions.is-ready {
@@ -3257,8 +3258,10 @@ img.logo-mark {
 }
 
 .setup-video-actions.is-ready .btn {
+  background: #fe2b54;
   opacity: 1;
   pointer-events: auto;
+  cursor: pointer;
 }
 
 .setup-step > .btn {

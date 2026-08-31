@@ -1,6 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { json, optionsResponse } from "../_shared/cors.ts";
 import { verifyPagnovoSignature } from "../_shared/hmac.ts";
+import { notifyUtmify, UTMIFY_ROW_COLUMNS, utmifyStatusForPayment } from "../_shared/utmify.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return optionsResponse();
@@ -54,6 +55,13 @@ Deno.serve(async (req) => {
     if (externalId) query = query.eq("id", externalId);
     else query = query.eq("pagnovo_transaction_id", transactionId);
     await query;
+
+    let rowQuery = db.from("spei_payments").select(UTMIFY_ROW_COLUMNS);
+    rowQuery = externalId ? rowQuery.eq("id", externalId) : rowQuery.eq("pagnovo_transaction_id", transactionId);
+    const { data: payment } = await rowQuery.maybeSingle();
+    if (payment) {
+      await notifyUtmify(db, payment, utmifyStatusForPayment(next));
+    }
   }
 
   return json({ ok: true });

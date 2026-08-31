@@ -42,6 +42,8 @@ No **nano da VPS** (build do site) só estas linhas:
 VITE_SUPABASE_URL=https://<PROJECT>.supabase.co
 VITE_SUPABASE_ANON_KEY=
 VITE_PAGANOVO_MOCK=false
+VITE_TIKTOK_PIXEL_ID=
+VITE_UTMIFY_PIXEL_ID=
 ```
 
 Depois do `.env`, é preciso **rebuild** (`npm run build`). Variáveis `VITE_*` só entram no bundle na altura do build.
@@ -65,6 +67,10 @@ Dashboard → Edge Functions → Secrets (não o `.env` do Vite):
 | `PAGNOVO_WEBHOOK_SECRET` | HMAC **deste** webhook. **Não** reutilizar o secret/URL da outra loja. |
 | `PAGNOVO_RESPONSIBLE_DOCUMENT` | CNPJ/RFC do merchant (dígitos). |
 | `PAGNOVO_RESPONSIBLE_EXTERNAL_ID` | Id estável do responsável na Pagnovo (não o UUID do pagamento). Default = o CNPJ. |
+| `UTMIFY_API_TOKEN` | Credencial de API da Utmify (Integrações → Webhooks → Credenciais de API). Sem isto as vendas não entram no dashboard. |
+| `TIKTOK_PIXEL_ID` | Mesmo pixel do `VITE_TIKTOK_PIXEL_ID`. Events API no servidor. |
+| `TIKTOK_ACCESS_TOKEN` | Access token da Events API do TikTok. Nunca com prefixo `VITE_`. |
+| `UTMIFY_TEST` | Opcional. `true` valida o payload na Utmify sem gravar a venda. |
 
 `payment-create` e `payment-status` têm `verify_jwt = false` — o funil guest cria SPEI sem signup. O webhook também está sem JWT; a auth é HMAC `x-signature`.
 
@@ -93,6 +99,24 @@ Localhost vs domínio: irrelevante para a Pagnovo. O Vite só chama a Supabase; 
 Se a Pagnovo devolver `Erro interno ao criar transação`, o payload SPEI já está alinhado com a loja Next.js (`MXN`, `SPEI`, `responsibleDocument`, `responsibleExternalId` estável). O 500 costuma ser a **chave/conta** (BRL/PIX ou `sk_test_` vs a conta MXN que já gera SPEI). Guarda o `x-trace-id` da resposta para o suporte Pagnovo.
 
 Enquanto `VITE_PAGANOVO_MOCK` não for `false`, `/app/pago` usa o simulador no browser.
+
+## Utmify + TikTok
+
+A venda é marcada pela **API da Utmify** (não só pelo pixel). O browser guarda os UTMs da landing (`src`, `sck`, `utm_*`, `ttclid`) e manda-os no `payment-create`. As Edge Functions enviam:
+
+1. `waiting_payment` quando a ordem SPEI é criada
+2. `paid` no webhook `cashin.paid` (e no poll de `payment-status` se o webhook atrasar)
+3. `refunded` / `refused` nos eventos correspondentes
+
+O `orderId` é o UUID do `spei_payments`. O `createdAt` UTC é o mesmo em todos os status. SPEI vai como `paymentMethod: "pix"` (a Utmify não tem enum SPEI; é o mesmo fluxo gerar-e-esperar). Moeda `MXN`, `$130.00`.
+
+TikTok Ads: pixel no browser + Events API nas Edge Functions (mesmo `event_id`, o TikTok faz dedupe). **Não** ligar também a conta TikTok dentro da Utmify — a conversão iria duas vezes. A Utmify fica só com o dashboard de vendas.
+
+No site:
+
+- `latest.js` no `index.html` (captura UTMs)
+- `VITE_TIKTOK_PIXEL_ID` no `.env` da VPS + rebuild → PageView, InitiateCheckout, CompletePayment
+- `VITE_UTMIFY_PIXEL_ID` opcional (pixel da Utmify)
 
 ## Estrutura
 

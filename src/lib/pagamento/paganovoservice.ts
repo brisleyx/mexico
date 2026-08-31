@@ -18,6 +18,7 @@
 
 import { digitsOnly, isClabeLength } from "../clabe";
 import { supabase } from "../supabase";
+import { getTrackingForApi, trackIdentify, trackInitiateCheckout } from "../tracking";
 import { PROCESSING_CENTS } from "./speiAmount";
 import {
   paymentCreateUrl,
@@ -59,6 +60,16 @@ type MockPayment = {
 };
 
 const mockLedger = new Map<string, MockPayment>();
+
+function withTracking(payload: CreatePaymentPayload): CreatePaymentPayload {
+  return { ...payload, tracking: payload.tracking ?? getTrackingForApi() };
+}
+
+function trackCreated(payload: CreatePaymentPayload, result: CreatePaymentResult) {
+  if (result.status === "ERROR") return;
+  trackIdentify(payload.customer_email, payload.customer_name);
+  trackInitiateCheckout(result.payment_id, PROCESSING_CENTS / 100);
+}
 
 function validatePayload(payload: CreatePaymentPayload): string | null {
   if (!Number.isInteger(payload.amount) || payload.amount <= 0) {
@@ -174,12 +185,15 @@ async function getPaymentStatusLive(id: string): Promise<PaymentStatusResult> {
 }
 
 export async function createPayment(payload: CreatePaymentPayload): Promise<CreatePaymentResult> {
-  const key = createKey(payload);
+  const withUtms = withTracking(payload);
+  const key = createKey(withUtms);
   if (inflight?.key === key) return inflight.promise;
 
   const promise = (async () => {
     try {
-      return USE_MOCK ? await createPaymentMock(payload) : await createPaymentLive(payload);
+      const result = USE_MOCK ? await createPaymentMock(withUtms) : await createPaymentLive(withUtms);
+      trackCreated(withUtms, result);
+      return result;
     } catch (error) {
       return {
         status: "ERROR" as const,

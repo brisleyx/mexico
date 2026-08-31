@@ -3,6 +3,12 @@ import { json, optionsResponse } from "../_shared/cors.ts";
 import { pagnovoPayerCpf, pagnovoPayerPhone } from "../_shared/cpf.ts";
 import { createSpeiPurchase } from "../_shared/pagnovo.ts";
 import { PROCESSING_CENTS } from "../_shared/speiAmount.ts";
+import {
+  clientIp,
+  notifyUtmify,
+  parseTracking,
+  UTMIFY_ROW_COLUMNS,
+} from "../_shared/utmify.ts";
 
 const REUSE_WINDOW_MS = 15 * 60 * 1000;
 
@@ -17,12 +23,18 @@ Deno.serve(async (req) => {
       customer_email?: string;
       clabe?: string;
       payment_method?: string;
+      tracking?: unknown;
     };
 
     const amount = PROCESSING_CENTS;
     const name = String(payload.customer_name ?? "").trim();
     const email = String(payload.customer_email ?? "").trim();
     const clabe = String(payload.clabe ?? "").replace(/\D/g, "");
+    const tracking = {
+      ...parseTracking(payload.tracking),
+      user_agent: req.headers.get("user-agent"),
+    };
+    const ip = clientIp(req);
     if (!Number.isInteger(amount) || amount <= 0) {
       return json({ status: "ERROR", message: "El monto de procesamiento no es válido." }, 400);
     }
@@ -51,7 +63,7 @@ Deno.serve(async (req) => {
     const reuseAfter = new Date(Date.now() - REUSE_WINDOW_MS).toISOString();
     const { data: existing } = await db
       .from("spei_payments")
-      .select("id, amount_cents, pagnovo_transaction_id, deposit_clabe, reference, status")
+      .select(`pagnovo_transaction_id, deposit_clabe, reference, status, ${UTMIFY_ROW_COLUMNS}`)
       .eq("customer_email", email)
       .eq("amount_cents", amount)
       .eq("status", "pending")
@@ -67,9 +79,19 @@ Deno.serve(async (req) => {
         .update({
           payer_clabe: clabe,
           customer_name: name,
+          tracking,
+          client_ip: ip ?? existing.client_ip,
           updated_at: new Date().toISOString(),
         })
         .eq("id", existing.id);
+
+      await notifyUtmify(db, {
+        ...existing,
+        customer_name: name,
+        customer_email: email,
+        tracking,
+        client_ip: ip ?? existing.client_ip,
+      }, "waiting_payment");
 
       const reference = existing.reference || existing.pagnovo_transaction_id;
       return json({
@@ -96,8 +118,10 @@ Deno.serve(async (req) => {
         customer_name: name,
         customer_email: email,
         payer_clabe: clabe,
+        tracking,
+        client_ip: ip,
       })
-      .select("id")
+      .select(UTMIFY_ROW_COLUMNS)
       .single();
     if (insertError || !row) {
       return json({ status: "ERROR", message: insertError?.message ?? "No se pudo guardar el pago." }, 500);
@@ -133,8 +157,11 @@ Deno.serve(async (req) => {
       .eq("id", row.id);
 
     if (mapped === "failed") {
+      await notifyUtmify(db, row, "refused");
       return json({ status: "ERROR", message: "Pagnovo rechazó la orden SPEI." }, 502);
     }
+
+    await notifyUtmify(db, row, "waiting_payment");
 
     return json({
       status: "SUCCESS",

@@ -30,6 +30,17 @@ export type CreatePaymentPayload = {
   /** 18-digit CLABE, digits only. */
   clabe: string;
   payment_method: PaymentMethod;
+  /** First-touch UTMs / ttclid captured on the landing URL. */
+  tracking?: {
+    src: string | null;
+    sck: string | null;
+    utm_source: string | null;
+    utm_campaign: string | null;
+    utm_medium: string | null;
+    utm_content: string | null;
+    utm_term: string | null;
+    ttclid?: string | null;
+  };
 };
 
 export type SpeiInstructions = {

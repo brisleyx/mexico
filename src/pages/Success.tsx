@@ -1,10 +1,18 @@
+import { useEffect } from "react";
 import { Coin } from "../components/Logo";
 import { useAppState } from "../context/AppStateContext";
 import { formatMxn } from "../lib/money";
+import { PROCESSING_CENTS } from "../lib/pagamento";
+import { lastPaymentId, trackCompletePayment, trackIdentify } from "../lib/tracking";
 
 export function SuccessScreen() {
   const { userData, lastWithdrawalCents, balance } = useAppState();
   const clabeTail = (userData.clabe || userData.chave).replace(/\s/g, "").slice(-4);
+
+  useEffect(() => {
+    trackIdentify(userData.email, userData.nome);
+    trackCompletePayment(lastPaymentId(), PROCESSING_CENTS / 100);
+  }, [userData.email, userData.nome]);
 
   return (
     <div className="withdraw-flow-panel">

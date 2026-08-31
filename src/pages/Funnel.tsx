@@ -7,6 +7,7 @@ import { useAuth } from "../context/AuthContext";
 import { api } from "../lib/api";
 import { appState } from "../lib/appState";
 import { applyScreen, stepFromLocation } from "../lib/router";
+import { captureTrackingFromLocation } from "../lib/tracking";
 import { Landing } from "./Landing";
 import { Feed } from "./Feed";
 import { LoadingScreen } from "./Loading";
@@ -24,12 +25,13 @@ export function Funnel() {
   const withdrawContinuation = ["five", "payment-gateway", "success"].includes(currentStep);
 
   useLayoutEffect(() => {
+    captureTrackingFromLocation();
     const fromPath = stepFromLocation(location.pathname, location.hash);
     if (fromPath && fromPath !== appState.get().currentStep) {
       appState.setStep(fromPath);
     }
     applyScreen(fromPath ?? appState.get().currentStep);
-  }, [location.pathname, location.hash, currentStep, loggedIn]);
+  }, [location.pathname, location.hash, location.search, currentStep, loggedIn]);
 
   useEffect(() => {
     if (!user) return;

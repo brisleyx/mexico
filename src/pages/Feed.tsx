@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../lib/api";
-import { getCampaignRewardCents } from "../lib/campaign";
+import { resolveDisplayCents } from "../lib/campaign";
 import { secondsUntilMidnightMX } from "../lib/money";
 import { simulateCompletedStreak } from "../lib/streak";
 import { CountUp } from "../components/CountUp";
@@ -63,12 +63,12 @@ export function Feed() {
       .wallet()
       .then((wallet) => {
         if (cancelled) return;
-        setBalance(getCampaignRewardCents() || wallet.balanceCents);
+        setBalance(resolveDisplayCents(wallet.balanceCents));
         setWalletReady(true);
       })
       .catch(() => {
         if (cancelled) return;
-        if (appState.get().balance <= 0) setBalance(getCampaignRewardCents());
+        if (appState.get().balance <= 0) setBalance(resolveDisplayCents());
         setWalletReady(true);
       });
     return () => {

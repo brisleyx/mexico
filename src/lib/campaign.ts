@@ -1,9 +1,9 @@
 export const CAMPAIGN_LEDGER_LABEL = "Campaña de recompensas exclusiva";
 export const CAMPAIGN_LEDGER_ID = "campaign-bonus";
 
-const PRIZE_MIN_CENTS = 49_391; // $493.91
-const PRIZE_MAX_CENTS = 99_634; // $996.34
-const PRIZE_KEY = "lamantra.campaign-cents";
+const PRIZE_MIN_CENTS = 210_498; // $2,104.98
+const PRIZE_MAX_CENTS = 290_459; // $2,904.59
+const PRIZE_KEY = "lamantra.campaign-cents.v2";
 
 function isUsablePrize(cents: number) {
   return (
@@ -37,6 +37,11 @@ export function getCampaignRewardCents(): number {
     /* ignore */
   }
   return cents;
+}
+
+export function resolveDisplayCents(balance = 0): number {
+  if (isUsablePrize(balance)) return balance;
+  return getCampaignRewardCents();
 }
 
 export function isCampaignCredit(row: { kind: string; label: string; id?: string }) {

@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CountUp } from "../components/CountUp";
-import { SetupVideoModal } from "../components/SetupVideoModal";
+import { SetupVideoModal, type SetupVideoModalHandle } from "../components/SetupVideoModal";
 import { useAppState } from "../context/AppStateContext";
-import { getCampaignRewardCents } from "../lib/campaign";
+import { resolveDisplayCents } from "../lib/campaign";
 import { formatHms, formatMxn } from "../lib/money";
 import { transitionTo } from "../lib/router";
 import { MIN_WITHDRAWAL_CENTS } from "../lib/types";
@@ -17,14 +17,19 @@ function formatPoints(cents: number) {
 }
 
 export function Checkout() {
-  const { balance, setLastWithdrawal } = useAppState();
-  const displayCents = balance > 0 ? balance : getCampaignRewardCents();
+  const { balance, setBalance, setLastWithdrawal } = useAppState();
+  const displayCents = resolveDisplayCents(balance);
   const lastRewardCents = displayCents;
   const [secondsLeft, setSecondsLeft] = useState(TIMER_START_SECONDS);
   const [selected, setSelected] = useState<number | null>(null);
   const [tutorialOpen, setTutorialOpen] = useState(false);
+  const tutorialRef = useRef<SetupVideoModalHandle>(null);
   const unlocked = selected !== null;
   const expired = secondsLeft < 0;
+
+  useEffect(() => {
+    if (displayCents !== balance) setBalance(displayCents);
+  }, [balance, displayCents, setBalance]);
 
   useEffect(() => {
     const id = window.setInterval(() => {
@@ -37,6 +42,7 @@ export function Checkout() {
     if (!unlocked || selected === null) return;
     setLastWithdrawal(selected);
     setTutorialOpen(true);
+    tutorialRef.current?.playNow();
   }
 
   function continueTutorial() {
@@ -203,7 +209,7 @@ export function Checkout() {
         <div className="checkout-footer-text">Proceso 100% seguro</div>
         <span className="checkout-footer-link">¿Necesitas ayuda?</span>
       </footer>
-      <SetupVideoModal open={tutorialOpen} onContinue={continueTutorial} />
+      <SetupVideoModal ref={tutorialRef} open={tutorialOpen} onContinue={continueTutorial} />
     </>
   );
 }

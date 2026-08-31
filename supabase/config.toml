@@ -1,0 +1,10 @@
+# CLI local. O project_id do LaMantra vai no `supabase link` — não reutilize o banco de doações.
+
+[functions.payment-create]
+verify_jwt = true
+
+[functions.payment-status]
+verify_jwt = true
+
+[functions.pagnovo-webhook]
+verify_jwt = false
